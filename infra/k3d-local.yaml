@@ -1,0 +1,36 @@
+# Local cluster definition. k3d runs k3s inside Docker, so local == VPS distro:
+# same Traefik ingress controller, same local-path storage class, same
+# NetworkPolicy enforcement (kube-router). Only Helm values differ.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: urumi
+servers: 1
+agents: 1
+# Pin the API server to loopback. On Docker Desktop for Windows k3d otherwise
+# writes host.docker.internal into kubeconfig, which can resolve to a LAN IP.
+kubeAPI:
+  host: "127.0.0.1"
+  hostIP: "127.0.0.1"
+  hostPort: "6550"
+ports:
+  # Host 80/443 -> k3d load balancer -> Traefik. Storefront and dashboard are
+  # reachable at *.127.0.0.1.nip.io without touching the hosts file.
+  - port: 80:80
+    nodeFilters: [loadbalancer]
+  - port: 443:443
+    nodeFilters: [loadbalancer]
+registries:
+  # Local image registry: build -> push to localhost:5000 -> pods pull
+  # urumi-registry:5000/<image>. Same flow as pushing to a real registry in prod.
+  create:
+    name: urumi-registry
+    host: "0.0.0.0"
+    hostPort: "5000"
+options:
+  k3d:
+    wait: true
+    timeout: "180s"
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

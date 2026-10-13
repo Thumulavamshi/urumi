@@ -1,0 +1,8 @@
+apiVersion: v2
+name: store
+description: >-
+  One WooCommerce store: WordPress + MariaDB + an idempotent setup Job.
+  One release per namespace (the unit a multi-store platform would stamp out).
+type: application
+version: 0.1.0
+appVersion: "wp-7.1.3_wc-11.2.1"

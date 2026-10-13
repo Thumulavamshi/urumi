@@ -1,0 +1,57 @@
+# Phase 0 smoke test: proves host:80 -> k3d LB -> Traefik -> Service -> Pod.
+# kubectl apply -f infra/smoke-whoami.yaml ; curl http://test.127.0.0.1.nip.io
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smoke
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami
+  namespace: smoke
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: whoami }
+  template:
+    metadata:
+      labels: { app: whoami }
+    spec:
+      containers:
+        - name: whoami
+          # pushed from the host as localhost:5000/whoami:smoke
+          image: urumi-registry:5000/whoami:smoke
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 32Mi }
+          readinessProbe:
+            httpGet: { path: /health, port: 80 }
+          livenessProbe:
+            httpGet: { path: /health, port: 80 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: smoke
+spec:
+  selector: { app: whoami }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami
+  namespace: smoke
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: test.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: whoami, port: { number: 80 } }

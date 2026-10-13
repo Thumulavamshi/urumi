@@ -1,0 +1,85 @@
+{{- $fullname := include "store.fullname" . -}}
+{{- $sel := dict "ctx" . "component" "wordpress" -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-uploads
+  labels: {{- include "store.labels" . | nindent 4 }}
+  annotations:
+    # Keep media across `helm uninstall`, like the MariaDB volume.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .Values.wordpress.persistence.accessMode }}]
+  {{- with .Values.wordpress.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-wordpress
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "store.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-wordpress
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # The uploads volume is ReadWriteOnce: the old pod must release it before the
+  # new one starts, so no rolling update (a few seconds of downtime on deploy).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "store.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "store.labels" . | nindent 8 }}
+        {{- include "store.selectorLabels" $sel | nindent 8 }}
+    spec:
+      # Avoid Kubernetes injecting WORDPRESS_* service env vars into the pod.
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 33            # www-data, so Apache can write uploads
+      containers:
+        - name: wordpress
+          image: {{ include "store.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env: {{- include "store.wordpressEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 80
+          # Liveness only checks Apache (a static file) so a database outage
+          # doesn't restart-loop the web pods; readiness exercises PHP + DB.
+          startupProbe:
+            httpGet: { path: /wp-includes/images/blank.gif, port: http }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /wp-includes/images/blank.gif, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet: { path: /wp-login.php, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources: {{- toYaml .Values.wordpress.resources | nindent 12 }}
+          volumeMounts:
+            - name: uploads
+              mountPath: /var/www/html/wp-content/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-uploads

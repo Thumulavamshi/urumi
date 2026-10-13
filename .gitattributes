@@ -1,0 +1,4 @@
+# Shell scripts and container files must keep LF endings on Windows checkouts.
+* text=auto eol=lf
+*.pdf binary
+*.png binary

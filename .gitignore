@@ -1,0 +1,46 @@
+# --- Dependencies & build output ---
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.venv/
+
+# --- Logs & temp ---
+*.log
+npm-debug.log*
+tmp/
+.cache/
+
+# --- Secrets: never commit real credentials ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+kubeconfig*
+*.kubeconfig
+# local-only Helm values holding real secrets (e.g. values-prod.secret.yaml)
+*.secret.yaml
+secrets/
+
+# --- Helm ---
+*.tgz
+charts/*/charts/
+charts/*/Chart.lock
+
+# --- Private material (assignment brief is not ours to publish) ---
+*.pdf
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

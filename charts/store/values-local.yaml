@@ -1,0 +1,17 @@
+# Local k3d cluster. nip.io resolves *.127.0.0.1.nip.io to 127.0.0.1, and host
+# port 80 is mapped to the k3d load balancer -> Traefik.
+store:
+  adminEmail: admin@store.local
+  timezone: Asia/Kolkata
+
+image:
+  registry: urumi-registry:5000   # pushed from the host as localhost:5000
+  tag: dev
+  pullPolicy: Always              # :dev is rebuilt in place
+
+wordpress:
+  environmentType: local
+
+ingress:
+  className: traefik
+  host: shop.127.0.0.1.nip.io

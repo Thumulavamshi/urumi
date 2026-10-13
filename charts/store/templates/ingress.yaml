@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "store.fullname" . -}}
+# Only the storefront/wp-admin is public. MariaDB (and, in Phase 2, the
+# WooCommerce MCP server) have ClusterIP/headless Services and no Ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-wordpress
+  labels: {{- include "store.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" $fullname) }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-wordpress
+                port: { name: http }
+{{- end }}

@@ -1,0 +1,63 @@
+{{- $fullname := include "store.fullname" . -}}
+# Runs after every install/upgrade. Installs WordPress + WooCommerce on first
+# run, then converges settings and re-syncs the REST API key from the Secret.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-setup
+  labels: {{- include "store.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    # Replace the previous Job on the next run, but keep it until then so
+    # `kubectl logs job/<release>-setup` works after a deploy.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.setup.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.setup.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "store.labels" . | nindent 8 }}
+        app.kubernetes.io/name: setup
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 33          # www-data: wp-cli refuses to run as root
+        runAsGroup: 33
+        runAsNonRoot: true
+      containers:
+        - name: setup
+          image: {{ include "store.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bash", "/opt/store-setup/setup.sh"]
+          env:
+            {{- include "store.wordpressEnv" . | nindent 12 }}
+            - name: STORE_URL
+              value: {{ include "store.url" . | quote }}
+            - name: STORE_TITLE
+              value: {{ .Values.store.title | quote }}
+            - name: STORE_CURRENCY
+              value: {{ .Values.store.currency | quote }}
+            - name: STORE_COUNTRY
+              value: {{ .Values.store.country | quote }}
+            - name: STORE_TIMEZONE
+              value: {{ .Values.store.timezone | quote }}
+            - name: WP_ADMIN_USER
+              value: {{ .Values.store.adminUser | quote }}
+            - name: WP_ADMIN_EMAIL
+              value: {{ .Values.store.adminEmail | quote }}
+            - name: WP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "store.wpSecret" . }}, key: admin-password }
+            - name: WC_API_USER
+              value: {{ .Values.secrets.wcApi.user | quote }}
+            - name: WC_CONSUMER_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ include "store.wcApiSecret" . }}, key: consumer-key }
+            - name: WC_CONSUMER_SECRET
+              valueFrom:
+                secretKeyRef: { name: {{ include "store.wcApiSecret" . }}, key: consumer-secret }
+            - name: SEED_PRODUCTS
+              value: {{ .Values.store.seedProducts | toJson | quote }}
+          resources: {{- toYaml .Values.setup.resources | nindent 12 }}

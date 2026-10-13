@@ -1,0 +1,83 @@
+# Defaults shared by every environment. Environment-specific overrides live in
+# values-local.yaml / values-prod.yaml next to this file.
+
+store:
+  # Public base URL. Empty => derived from ingress.host (+ https when TLS is on).
+  url: ""
+  title: "Urumi Demo Store"
+  currency: USD
+  country: "US:CA"
+  # Store timezone: decides what "orders today" means for the MCP tools.
+  timezone: UTC
+  adminUser: admin
+  adminEmail: admin@example.com
+  # Products created on first install only.
+  seedProducts:
+    - name: "Urumi Hoodie"
+      price: "45.00"
+      description: "Warm hoodie with the Urumi logo."
+    - name: "MCP Sticker Pack"
+      price: "5.00"
+      description: "Ten stickers for your laptop."
+    - name: "Kubernetes Mug"
+      price: "12.50"
+      description: "Holds coffee and YAML."
+
+# Credentials. Each block either generates a random Secret on first install
+# (kept stable across upgrades via `lookup`) or points at an existing Secret
+# created out-of-band (recommended in production).
+secrets:
+  database:
+    existingSecret: ""   # keys: root-password, password
+  wordpress:
+    existingSecret: ""   # keys: admin-password, auth-key, secure-auth-key, logged-in-key, nonce-key, auth-salt, secure-auth-salt, logged-in-salt, nonce-salt
+  wcApi:
+    existingSecret: ""   # keys: consumer-key, consumer-secret
+    # WordPress user that owns the REST key (role shop_manager, not admin).
+    user: mcp-bot
+
+image:
+  registry: urumi-registry:5000
+  repository: store-wordpress
+  tag: dev
+  pullPolicy: IfNotPresent
+
+wordpress:
+  environmentType: production   # WP_ENVIRONMENT_TYPE
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  persistence:
+    # Only wp-content/uploads is persistent; core, plugins and theme come from
+    # the image (and DISALLOW_FILE_MODS blocks installing code at runtime).
+    size: 2Gi
+    storageClass: ""     # "" => cluster default
+    accessMode: ReadWriteOnce
+
+mariadb:
+  image: mariadb:11.8.9
+  database: wordpress
+  user: wordpress
+  innodbBufferPoolSize: 128M
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  persistence:
+    size: 2Gi
+    storageClass: ""
+
+setup:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+
+ingress:
+  enabled: true
+  className: traefik
+  host: shop.example.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""       # e.g. filled by cert-manager

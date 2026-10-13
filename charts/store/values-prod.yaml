@@ -1,0 +1,43 @@
+# Production-like VPS running k3s. Same chart; only these values differ.
+# Replace the placeholders, and create the Secrets below before installing:
+#   kubectl -n store create secret generic store-db --from-literal=root-password=... --from-literal=password=...
+#   (see values.yaml for the keys each Secret must contain)
+store:
+  adminEmail: admin@shop.example.com   # CHANGE
+
+secrets:
+  database:
+    existingSecret: store-db
+  wordpress:
+    existingSecret: store-wordpress
+  wcApi:
+    existingSecret: store-wc-api
+
+image:
+  registry: ghcr.io/CHANGE-ME          # images pushed by CI / by hand
+  tag: "0.1.0"                         # immutable tags in prod => clean rollbacks
+  pullPolicy: IfNotPresent
+
+wordpress:
+  environmentType: production
+  persistence:
+    size: 10Gi
+    storageClass: local-path           # k3s default; swap for a network/block class if available
+
+mariadb:
+  innodbBufferPoolSize: 256M
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  persistence:
+    size: 10Gi
+    storageClass: local-path
+
+ingress:
+  className: traefik
+  host: shop.example.com               # CHANGE: DNS A record -> VPS IP
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: shop-tls
