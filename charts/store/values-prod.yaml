@@ -18,6 +18,13 @@ image:
   tag: "0.1.0"                         # immutable tags in prod => clean rollbacks
   pullPolicy: IfNotPresent
 
+wooMcp:
+  existingSecret: store-woo-mcp
+  image:
+    registry: ghcr.io/CHANGE-ME
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
 wordpress:
   environmentType: production
   persistence:

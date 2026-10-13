@@ -79,3 +79,69 @@ defines what "orders today" means.
 browser, Node and MCP clients all reach the k3d load balancer on host port 80
 without editing the hosts file. In production the same Ingress gets a real
 hostname via `ingress.host` (+ cert-manager TLS).
+
+## Layer 2 — WooCommerce MCP server (`services/woo-mcp`)
+
+### Shape
+
+- TypeScript on Node 24, MCP TypeScript SDK **v2** (`@modelcontextprotocol/server`
+  + `@modelcontextprotocol/node`). Node runs the `.ts` sources directly (type
+  stripping); `tsc` is only a type-checker. No build step, small image, non-root.
+- **Streamable HTTP** at `POST /mcp`, **stateless**: each HTTP request gets a
+  fresh `McpServer` + transport, no session state. Any replica can serve any
+  request; restarts lose nothing. Serves both the 2025-era `initialize`
+  handshake (Claude Code, Inspector) and the 2026-07-28 protocol.
+- Tools: `list_products`, `create_product`, `list_orders`, `get_order`,
+  `update_order_status`. Zod input schemas (invalid input never reaches the
+  store), MCP annotations (`readOnlyHint`, `idempotentHint`) so clients and the
+  gateway can tell reads from writes. Results are compact JSON summaries rather
+  than raw WooCommerce objects, to keep LLM context small.
+- "Orders today": `list_orders(date="today")` resolves the calendar day in the
+  **store's** timezone (read from the WordPress REST index, cached 5 min), then
+  queries WooCommerce with store-local `after`/`before` bounds.
+
+### How it talks to the store, and why
+
+WooCommerce REST API v3 over the in-cluster Service
+(`http://store-wordpress.store.svc.cluster.local`). Over plain HTTP WooCommerce
+only accepts **OAuth 1.0a one-legged signatures** (HMAC-SHA256 here) — the
+consumer secret never travels on the wire. Subtlety: WooCommerce recomputes the
+signature from `get_home_url()`, i.e. the store's *public* host, so the client
+sends the request to the Service DNS name but signs `http://<public host><path>`
+(`STORE_PUBLIC_URL`). Redirects are never followed (`redirect: manual`) so
+credentials can't be bounced elsewhere.
+
+Rejected: WP-CLI (needs `pods/exec` into WordPress — cluster-API privileges far
+beyond "manage orders"); direct SQL (bypasses WooCommerce logic: stock, hooks,
+HPOS/legacy storage differences).
+
+### Failure handling
+
+- Every store call has a timeout (`WC_TIMEOUT_MS`, default 10 s).
+- Store errors are returned as MCP tool results with `isError: true` and a
+  readable message (`WooCommerce error (HTTP 404) [woocommerce_rest_shop_order_invalid_id]: Invalid ID.`,
+  `store did not respond within 10s`, `store unreachable: …`) — the MCP
+  request itself succeeds, so a client/LLM can react.
+- **Readiness does not depend on the store.** If WordPress is down the MCP
+  server stays in the Service and answers with clear tool errors; it only
+  disappears (→ gateway shows *Unreachable*) when the MCP pod itself is dead.
+  `/status` reports store reachability for debugging.
+
+### Isolation (enforced, and tested)
+
+| Path | Mechanism | Verified |
+|---|---|---|
+| Internet → MCP | ClusterIP Service, no Ingress | `shop…/mcp` → 404 |
+| Other pods → MCP | NetworkPolicy: only `app.kubernetes.io/name=gateway` pods in ns `platform`, port 8080 | other ns / unlabeled pod → refused |
+| Gateway → MCP without token | Static bearer token (Secret `store-woo-mcp`), constant-time compare | 401 |
+| MCP → MariaDB / internet | Egress NetworkPolicy: only WordPress:80 + DNS | refused |
+| MCP → DB password | Only `store-wc-api` Secret mounted | — |
+| MCP → Kubernetes API | `automountServiceAccountToken: false` | — |
+
+Container hardening: `runAsNonRoot` (uid 1000), read-only root filesystem, all
+capabilities dropped, no privilege escalation, `RuntimeDefault` seccomp.
+
+Observed: kube-router (k3s' NetworkPolicy controller) programs a **new** pod's
+IP a second or two after the pod starts, so a brand-new client pod is briefly
+refused. The gateway must therefore treat early connection errors as transient
+(retry/health loop), not as a permanent failure.

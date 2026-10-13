@@ -12,6 +12,12 @@ image:
 wordpress:
   environmentType: local
 
+wooMcp:
+  image:
+    registry: urumi-registry:5000
+    tag: dev
+    pullPolicy: Always
+
 ingress:
   className: traefik
   host: shop.127.0.0.1.nip.io

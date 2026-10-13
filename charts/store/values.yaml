@@ -73,6 +73,35 @@ setup:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 384Mi }
 
+# WooCommerce MCP server (services/woo-mcp). ClusterIP only, never on Ingress.
+wooMcp:
+  enabled: true
+  image:
+    registry: urumi-registry:5000
+    repository: woo-mcp
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8080
+  storeTimeoutMs: 10000
+  # Bearer token the gateway must send. Generated if empty; the gateway gets a
+  # copy (see scripts/deploy-local.sh). keys: token
+  existingSecret: ""
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 192Mi }
+
+networkPolicy:
+  enabled: true
+  # Who may reach the storefront (port 80): the ingress controller.
+  ingressController:
+    namespace: kube-system
+    podLabels: { app.kubernetes.io/name: traefik }
+  # Who may call the MCP server: only the gateway.
+  mcpClients:
+    namespace: platform
+    podLabels: { app.kubernetes.io/name: gateway }
+
 ingress:
   enabled: true
   className: traefik

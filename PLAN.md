@@ -75,24 +75,17 @@ Own Helm chart `charts/store` (no Bitnami — keeps it explainable and their ima
 
 **Exit (DoD "Store"):** open storefront → add to cart → checkout with COD → order visible in WP admin. Pod delete → data survives (PVC).
 
-## Phase 2 — WooCommerce MCP server (Days 3–4)
+## Phase 2 — WooCommerce MCP server (Days 3–4) ✅
 
-`services/woo-mcp` (Node + `@modelcontextprotocol/sdk`, Streamable HTTP at `/mcp`):
+`services/woo-mcp` (Node 24 + MCP SDK v2 `@modelcontextprotocol/server`, Streamable HTTP at `/mcp`, stateless):
 
-- [ ] Tools (zod input schemas, clear descriptions):
-  - `list_products` (search, status, page/per_page)
-  - `create_product` (name, regular_price, description?, status=publish)
-  - `list_orders` (status, `after`/`before` dates — supports "orders today"), returns compact summaries
-  - `get_order` (id) — line items, totals, customer, status
-  - `update_order_status` (id, status enum)
-- [ ] WC REST client with timeouts, error mapping → MCP `isError: true` with readable messages.
-- [ ] Auth: requires a static bearer token (from Secret) that only the gateway holds.
-- [ ] `/healthz` (liveness) and `/readyz` (readiness — checks store reachability).
-- [ ] Dockerfile (multi-stage, non-root), added to `charts/store` as Deployment + **ClusterIP only, no Ingress**.
-- [ ] NetworkPolicy: ingress to woo-mcp only from `platform` namespace gateway pods; WordPress only from woo-mcp + ingress controller; MariaDB only from WordPress + setup Job.
-- [ ] Test with MCP Inspector via `kubectl port-forward` (dev only).
-
-**Exit:** Inspector lists 5 tools, `create_product` shows up on the storefront, `list_orders` for today returns a manual order.
+- [x] Tools: `list_products`, `create_product`, `list_orders` (`date: today|yesterday|YYYY-MM-DD` in store timezone), `get_order`, `update_order_status` (+ optional note). Zod schemas, MCP annotations.
+- [x] WC REST client: OAuth 1.0a HMAC-SHA256 signing against the public store URL, timeouts, no redirects, errors → `isError` results.
+- [x] Bearer token auth (Secret `store-woo-mcp`, constant-time compare).
+- [x] `/healthz`, `/readyz` (store-independent by design), `/status` (store reachability).
+- [x] Dockerfile (no build step, non-root uid 1000) in `charts/store`: Deployment + ClusterIP Service, read-only rootfs, caps dropped, no SA token.
+- [x] NetworkPolicies: MariaDB ← WordPress/setup; WordPress ← Traefik/woo-mcp; woo-mcp ← `platform` gateway pods only; woo-mcp egress → WordPress + DNS only.
+- [x] Verified: smoke client (`scripts/smoke.ts`) locally + in-cluster; raw JSON-RPC from a gateway-labeled pod; blocked from other pods/namespaces/internet; egress to DB/internet blocked.
 
 ## Phase 3 — Gateway backend core (Days 4–7) — the heart of the project
 

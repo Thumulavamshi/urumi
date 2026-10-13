@@ -1,0 +1,86 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "store.fullname" . -}}
+{{- $np := .Values.networkPolicy -}}
+# Who may talk to what inside the store namespace. Once a pod is selected by a
+# NetworkPolicy, everything not explicitly allowed is dropped.
+#
+#   ingress controller ──80──> wordpress ──3306──> mariadb <──3306── setup job
+#   gateway (platform ns) ──8080──> woo-mcp ──80──> wordpress
+#
+# MariaDB: only WordPress and the setup Job.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-mariadb
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "store.selectorLabels" (dict "ctx" . "component" "mariadb") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/instance, operator: In, values: [{{ .Release.Name }}] }
+              - { key: app.kubernetes.io/name, operator: In, values: [wordpress, setup] }
+      ports:
+        - { port: 3306, protocol: TCP }
+---
+# WordPress: the ingress controller (public traffic) and the MCP server.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-wordpress
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "store.selectorLabels" (dict "ctx" . "component" "wordpress") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.ingressController.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.ingressController.podLabels | nindent 14 }}
+        - podSelector:
+            matchLabels: {{- include "store.selectorLabels" (dict "ctx" . "component" "woo-mcp") | nindent 14 }}
+      ports:
+        - { port: 80, protocol: TCP }
+{{- if .Values.wooMcp.enabled }}
+---
+# MCP server, inbound: only gateway pods in the platform namespace.
+# Outbound: only DNS and this store's WordPress — a compromised MCP server
+# can't reach MariaDB, other namespaces, or the internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-woo-mcp
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "store.selectorLabels" (dict "ctx" . "component" "woo-mcp") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.mcpClients.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.mcpClients.podLabels | nindent 14 }}
+      ports:
+        - { port: {{ .Values.wooMcp.port }}, protocol: TCP }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {{- include "store.selectorLabels" (dict "ctx" . "component" "wordpress") | nindent 14 }}
+      ports:
+        - { port: 80, protocol: TCP }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+{{- end }}
+{{- end }}
