@@ -1,0 +1,10 @@
+# Local k3d cluster (scripts/cluster-up.sh). Images come from the k3d registry.
+bootstrapAdmin:
+  email: admin@urumi.local
+
+gateway:
+  image:
+    pullPolicy: Always         # :dev is rebuilt in place
+
+ingress:
+  host: app.127.0.0.1.nip.io

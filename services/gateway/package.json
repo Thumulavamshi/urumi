@@ -1,0 +1,29 @@
+{
+  "name": "gateway",
+  "version": "0.1.0",
+  "description": "Team MCP gateway: one MCP endpoint aggregating many upstream MCP servers, plus the dashboard API",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.ts",
+    "typecheck": "tsc -p .",
+    "e2e": "node scripts/e2e.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

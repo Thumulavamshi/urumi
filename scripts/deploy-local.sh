@@ -16,8 +16,16 @@ deploy_store() {
     --wait --timeout 10m
 }
 
+deploy_platform() {
+  # Needs the store release first: copies its MCP token into this namespace.
+  helm upgrade --install platform charts/platform \
+    --namespace platform --create-namespace \
+    -f charts/platform/values-local.yaml \
+    --wait --timeout 5m
+}
+
 targets=("$@")
-[ ${#targets[@]} -eq 0 ] && targets=(store)
+[ ${#targets[@]} -eq 0 ] && targets=(store platform)
 for t in "${targets[@]}"; do
   echo "==> deploying $t"
   "deploy_$t"

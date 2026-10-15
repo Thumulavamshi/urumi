@@ -1,0 +1,43 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "platform.fullname" . -}}
+{{- $np := .Values.networkPolicy -}}
+# Inbound rules for the platform namespace:
+#
+#   ingress controller ──8080──> gateway ──5432──> postgres
+#
+# (Egress from the gateway — to upstream MCP servers, DNS and later the LLM
+# API — is locked down in the hardening phase.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-postgres
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 14 }}
+      ports:
+        - { port: 5432, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-gateway
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.ingressController.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.ingressController.podLabels | nindent 14 }}
+      ports:
+        - { port: {{ .Values.gateway.port }}, protocol: TCP }
+{{- end }}

@@ -1,0 +1,118 @@
+{{- $fullname := include "platform.fullname" . -}}
+{{- $sel := dict "ctx" . "component" "gateway" -}}
+{{- /* Upstreams handed to the gateway as JSON; each credential arrives as its own env var from a Secret. */}}
+{{- $bootstrap := list -}}
+{{- range .Values.upstreams }}
+{{- $s := dict "slug" .slug "name" .name "url" .url "authType" (.authType | default "none") -}}
+{{- if .authHeaderName }}{{ $_ := set $s "authHeaderName" .authHeaderName }}{{ end -}}
+{{- if and .credential (ne (.authType | default "none") "none") }}{{ $_ := set $s "credentialEnv" (include "platform.credEnv" .slug) }}{{ end -}}
+{{- $bootstrap = append $bootstrap $s -}}
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-gateway
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "platform.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-gateway
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels: {{- include "platform.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+        {{- include "platform.selectorLabels" $sel | nindent 8 }}
+      annotations:
+        # The upstream list is read at startup: roll the pod when it changes.
+        checksum/upstreams: {{ toJson $bootstrap | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false   # never talks to the Kubernetes API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: gateway
+          image: {{ with .Values.gateway.image }}{{ if .registry }}{{ .registry }}/{{ end }}{{ .repository }}:{{ .tag }}{{ end }}
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          env:
+            - name: PORT
+              value: {{ .Values.gateway.port | quote }}
+            - name: PUBLIC_URL
+              value: {{ include "platform.publicUrl" . | quote }}
+            - name: COOKIE_SECURE
+              value: {{ .Values.ingress.tls.enabled | quote }}
+            - name: CALL_TIMEOUT_MS
+              value: {{ .Values.gateway.callTimeoutMs | quote }}
+            - name: HEALTH_INTERVAL_MS
+              value: {{ .Values.gateway.healthIntervalMs | quote }}
+            - name: HEALTH_TIMEOUT_MS
+              value: {{ .Values.gateway.healthTimeoutMs | quote }}
+            - name: SESSION_TTL_HOURS
+              value: {{ .Values.gateway.sessionTtlHours | quote }}
+            - name: INVITE_TTL_HOURS
+              value: {{ .Values.gateway.inviteTtlHours | quote }}
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "platform.postgresSecret" . }}, key: password }
+            # $(PG_PASSWORD) is expanded by the kubelet from the variable above.
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.user }}:$(PG_PASSWORD)@{{ $fullname }}-postgres:5432/{{ .Values.postgres.database }}"
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ include "platform.gatewaySecret" . }}, key: encryption-key }
+            - name: BOOTSTRAP_ADMIN_EMAIL
+              value: {{ .Values.bootstrapAdmin.email | quote }}
+            - name: BOOTSTRAP_ADMIN_NAME
+              value: {{ .Values.bootstrapAdmin.name | quote }}
+            - name: BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "platform.gatewaySecret" . }}, key: admin-password }
+            - name: BOOTSTRAP_SERVERS
+              value: {{ toJson $bootstrap | quote }}
+            {{- range .Values.upstreams }}
+            {{- if and .credential (ne (.authType | default "none") "none") }}
+            - name: {{ include "platform.credEnv" .slug }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .credential.existingSecret | default (include "platform.upstreamsSecret" $) }}
+                  key: {{ if .credential.existingSecret }}{{ .credential.key }}{{ else }}{{ .slug }}{{ end }}
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.port }}
+          # Startup waits for Postgres and runs migrations before listening.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          # Ready = can reach Postgres. Upstream health is deliberately NOT part of
+          # it: a dead upstream must not take the whole gateway out of the Service.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources: {{- toYaml .Values.gateway.resources | nindent 12 }}

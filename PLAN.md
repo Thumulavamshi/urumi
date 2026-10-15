@@ -87,29 +87,21 @@ Own Helm chart `charts/store` (no Bitnami — keeps it explainable and their ima
 - [x] NetworkPolicies: MariaDB ← WordPress/setup; WordPress ← Traefik/woo-mcp; woo-mcp ← `platform` gateway pods only; woo-mcp egress → WordPress + DNS only.
 - [x] Verified: smoke client (`scripts/smoke.ts`) locally + in-cluster; raw JSON-RPC from a gateway-labeled pod; blocked from other pods/namespaces/internet; egress to DB/internet blocked.
 
-## Phase 3 — Gateway backend core (Days 4–7) — the heart of the project
+## Phase 3 — Gateway backend core (Days 4–7) ✅
 
-`services/gateway` (Node/TS, Express or Fastify, Postgres via Drizzle/Prisma, migrations on start):
+`services/gateway` (Node 24 + Express 5, `pg` with plain-SQL migrations on start, MCP SDK v2 client + low-level server):
 
-**Data model:** `users(id, email, name, role[admin|member], password_hash, invited_at)`, `api_keys(id, user_id, prefix, hash, created_at, revoked_at, last_used_at)`, `servers(id, slug, name, url, auth_type[none|bearer|header], auth_header_name, credential_enc, enabled, status, last_error, last_checked_at)`, `audit_log(id, user_id, server_id, tool, started_at, duration_ms, outcome, error)`.
+- [x] Data model (`src/migrations/001_init.sql`): users, invites, sessions, api_keys, servers, audit_log.
+- [x] **Auth**: dashboard email+password (scrypt) → server-side session in an httpOnly SameSite=Lax cookie (+ Origin check, JSON-only writes); invites = one-time hashed links; API keys `mcpg_…` stored as SHA-256, checked on every request (revocation immediate; live MCP sessions closed too).
+- [x] **Upstream manager**: one MCP client per enabled server, registry re-read every 15 s, parallel health checks (5 s timeout), statuses connected / unreachable (+ reason) / disabled, 3 s first retry then backoff, immediate re-check after a transport failure.
+- [x] **Aggregated MCP server** at `/mcp`: `slug__tool` names, `[Server]` description prefix, 20 s call timeout, clear errors, an audit row for every call (success/error/timeout/denied/unreachable), `tools/list_changed` pushed to open sessions.
+- [x] **Admin REST API**: servers CRUD (credential write-only, AES-256-GCM at rest), enable/disable, test connection (saved or unsaved settings); users invite/role/disable/re-invite; revoke any key; audit with filters + keyset pagination.
+- [x] **Member REST API**: me, my keys (create shows key once + Claude Code snippet; revoke), servers + tools read-only, own audit.
+- [x] Bootstrap: first admin from Secret; WooCommerce server auto-registered as a managed server from Helm values (token copied from the store namespace via `lookup`).
+- [x] Helm `charts/platform`: gateway Deployment + Service, Postgres StatefulSet + PVC, Secrets (keep), Ingress `/api` + `/mcp`, NetworkPolicies (postgres ← gateway; gateway ← Traefik). Probes + limits everywhere. (LLM key Secret comes with Phase 6.)
+- [x] Verified: `scripts/e2e.ts` (32 checks) locally and through the Ingress; woo-mcp scaled to 0 → unreachable + clear error, gateway stays Ready, recovers ~13 s after; pod deletes → data survives.
 
-- [ ] **Auth**
-  - Dashboard: email+password login → httpOnly session cookie (JWT or server session). Invite = admin creates user with one-time invite link/temp password.
-  - MCP endpoint: `Authorization: Bearer mcpg_…` → hash → lookup non-revoked key → user. Revocation takes effect on the very next request (no caching, or cache ≤ few seconds).
-- [ ] **Upstream manager**
-  - One MCP **client** per enabled server (Streamable HTTP client transport), credential injected as header server-side.
-  - Health loop (e.g. every 10–15 s): `listTools` with timeout → status `connected` / `unreachable` (+ reason) ; `disabled` if toggled off. Cache tool lists per server.
-  - Reconnect with backoff; a dead upstream never blocks others (`Promise.allSettled` + per-call `AbortSignal` timeout).
-- [ ] **Aggregated MCP server** at `POST/GET /mcp` (Streamable HTTP, SDK server):
-  - `tools/list` → union of cached tools from enabled+connected servers, renamed `slug__tool`, description prefixed with `[server name]`.
-  - `tools/call` → parse prefix → route → timeout (e.g. 20 s) → clear error (`Upstream 'woo' timed out after 20s`) → **audit row always written** (success/error/timeout/denied).
-  - Emit `notifications/tools/list_changed` when servers are enabled/disabled/added so clients refresh.
-- [ ] **Admin REST API** (role-guarded): CRUD servers (credential write-only), enable/disable, test-connection; users/invites; issue/revoke any key; audit log with filters + pagination.
-- [ ] **Member REST API**: my profile, generate/revoke my keys, view tools.
-- [ ] Bootstrap: first admin from Secret values; WooCommerce server auto-registered on startup from Helm values (URL + token from Secret) → DoD "already registered as first server".
-- [ ] Helm: Deployment + Service + Postgres StatefulSet/PVC + Secrets (DB password, session secret, encryption key, LLM key, bootstrap admin). Probes + limits.
-
-**Exit:** with `curl`/Inspector + a member key: tools from woo listed with prefixes, calls routed and audited; revoked key → 401; disabled server → tools gone.
+**Exit:** with `curl`/Inspector + a member key: tools from woo listed with prefixes, calls routed and audited; revoked key → 401; disabled server → tools gone. ✅
 
 ## Phase 4 — Two more upstream MCP servers (Day 7)
 

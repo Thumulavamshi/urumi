@@ -1,0 +1,6 @@
+apiVersion: v2
+name: platform
+description: Team MCP gateway (API + aggregated MCP endpoint) with its Postgres
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

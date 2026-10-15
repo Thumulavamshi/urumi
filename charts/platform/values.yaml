@@ -1,0 +1,81 @@
+# Defaults shared by every environment. Environment-specific overrides live in
+# values-local.yaml / values-prod.yaml next to this file.
+
+# Public base URL of the dashboard/gateway. Empty => derived from ingress.host.
+publicUrl: ""
+
+# First admin, created on first start if that email doesn't exist yet.
+# The password comes from the gateway Secret (key admin-password).
+bootstrapAdmin:
+  email: admin@example.com
+  name: Admin
+
+# Credentials. Generated on first install (stable across upgrades via
+# `lookup`, and kept on uninstall), or existing Secrets created out-of-band.
+secrets:
+  gateway:
+    # keys: encryption-key (base64 of 32 random bytes — encrypts upstream
+    # credentials at rest; losing it means re-entering them), admin-password
+    existingSecret: ""
+  postgres:
+    existingSecret: ""   # keys: password
+
+# Upstream MCP servers registered on every gateway start ("managed": their
+# URL/credential follow these values; admins can still enable/disable them).
+# More servers can be added at runtime from the dashboard/API.
+upstreams:
+  - slug: woo
+    name: WooCommerce
+    url: http://store-woo-mcp.store.svc.cluster.local/mcp
+    authType: bearer           # none | bearer | header
+    # authHeaderName: X-Api-Key  # for authType: header
+    credential:
+      # Either a Secret in this namespace...
+      existingSecret: ""
+      key: token
+      # ...or copied at install time from the store release's Secret (Secrets
+      # can't be referenced across namespaces). Install the store first.
+      copyFrom: { namespace: store, secret: store-woo-mcp, key: token }
+
+gateway:
+  image:
+    registry: urumi-registry:5000
+    repository: gateway
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicas: 1                  # MCP sessions are in-memory: >1 needs sticky sessions (docs/design.md)
+  port: 8080
+  callTimeoutMs: 20000         # per tools/call towards an upstream
+  healthIntervalMs: 15000      # upstream health check interval
+  healthTimeoutMs: 5000
+  sessionTtlHours: 168
+  inviteTtlHours: 72
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+
+postgres:
+  image: postgres:18-alpine
+  database: gateway
+  user: gateway
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  persistence:
+    size: 1Gi
+    storageClass: ""
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    namespace: kube-system
+    podLabels: { app.kubernetes.io/name: traefik }
+
+ingress:
+  enabled: true
+  className: traefik
+  host: app.example.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""

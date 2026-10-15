@@ -1,0 +1,8 @@
+Gateway: {{ include "platform.publicUrl" . }}
+  REST API:     {{ include "platform.publicUrl" . }}/api
+  MCP endpoint: {{ include "platform.publicUrl" . }}/mcp   (Authorization: Bearer <personal API key>)
+
+Admin login: {{ .Values.bootstrapAdmin.email }}
+  password: kubectl -n {{ .Release.Namespace }} get secret {{ include "platform.gatewaySecret" . }} -o jsonpath='{.data.admin-password}' | base64 -d
+
+Logs: kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "platform.fullname" . }}-gateway -f

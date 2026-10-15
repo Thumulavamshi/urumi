@@ -1,0 +1,44 @@
+# Production-like VPS running k3s. Same chart; only these values differ.
+# Create the Secrets before installing (see values.yaml for keys), e.g.:
+#   kubectl -n platform create secret generic platform-gateway \
+#     --from-literal=encryption-key="$(openssl rand -base64 32)" --from-literal=admin-password=...
+#   kubectl -n platform create secret generic platform-postgres --from-literal=password=...
+#   kubectl -n platform create secret generic platform-upstreams \
+#     --from-literal=woo="$(kubectl -n store get secret store-woo-mcp -o jsonpath='{.data.token}' | base64 -d)"
+bootstrapAdmin:
+  email: admin@shop.example.com   # CHANGE
+
+secrets:
+  gateway:
+    existingSecret: platform-gateway
+  postgres:
+    existingSecret: platform-postgres
+
+upstreams:
+  - slug: woo
+    name: WooCommerce
+    url: http://store-woo-mcp.store.svc.cluster.local/mcp
+    authType: bearer
+    credential:
+      existingSecret: platform-upstreams
+      key: woo
+
+gateway:
+  image:
+    registry: ghcr.io/CHANGE-ME
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
+postgres:
+  persistence:
+    size: 5Gi
+    storageClass: local-path
+
+ingress:
+  className: traefik
+  host: app.example.com          # CHANGE: DNS A record -> VPS IP
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: app-tls
