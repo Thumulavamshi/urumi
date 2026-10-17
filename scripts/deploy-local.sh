@@ -17,15 +17,23 @@ deploy_store() {
 }
 
 deploy_platform() {
-  # Needs the store release first: copies its MCP token into this namespace.
+  # Needs the store and tools releases first: copies their MCP tokens into this namespace.
   helm upgrade --install platform charts/platform \
     --namespace platform --create-namespace \
     -f charts/platform/values-local.yaml \
     --wait --timeout 5m
 }
 
+deploy_tools() {
+  # fx + notes MCP servers; the platform release copies their tokens.
+  helm upgrade --install tools charts/tools \
+    --namespace tools --create-namespace \
+    -f charts/tools/values-local.yaml \
+    --wait --timeout 3m
+}
+
 targets=("$@")
-[ ${#targets[@]} -eq 0 ] && targets=(store platform)
+[ ${#targets[@]} -eq 0 ] && targets=(store tools platform)
 for t in "${targets[@]}"; do
   echo "==> deploying $t"
   "deploy_$t"

@@ -1,0 +1,10 @@
+In-cluster MCP servers (ClusterIP only, reachable from the gateway pods only):
+{{- if .Values.fx.enabled }}
+  fx:    http://{{ include "tools.fullname" . }}-fx.{{ .Release.Namespace }}.svc.cluster.local/mcp     (Authorization: Bearer <token>)
+{{- end }}
+{{- if .Values.notes.enabled }}
+  notes: http://{{ include "tools.fullname" . }}-notes.{{ .Release.Namespace }}.svc.cluster.local/mcp  ({{ .Values.notes.authHeader }}: <token>)
+{{- end }}
+
+Tokens live in the Secrets {{ include "tools.fullname" . }}-fx / {{ include "tools.fullname" . }}-notes (key: token);
+the platform chart copies them into its namespace at install time.

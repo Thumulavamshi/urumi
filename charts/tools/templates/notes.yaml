@@ -1,0 +1,70 @@
+{{- if .Values.notes.enabled }}
+{{- $sel := dict "ctx" . "component" "notes" -}}
+{{- $fullname := include "tools.fullname" . -}}
+# Inbound credential, sent by the gateway in the {{ .Values.notes.authHeader }} header.
+{{ include "tools.secret" $sel }}
+{{ include "tools.service" $sel }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-notes
+  labels: {{- include "tools.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep   # notes survive `helm uninstall`
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.notes.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.notes.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-notes
+  labels: {{- include "tools.labels" . | nindent 4 }}
+spec:
+  # One writer: the notes live in a single JSON file on a ReadWriteOnce volume,
+  # so never run two pods at once (Recreate, not RollingUpdate).
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "tools.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tools.labels" . | nindent 8 }}
+        {{- include "tools.selectorLabels" $sel | nindent 8 }}
+    spec:
+      {{- include "tools.podSecurity" . | nindent 6 }}
+      containers:
+        - name: notes
+          image: {{ include "tools.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [node, src/notes.ts]
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NOTES_DATA_DIR
+              value: /data
+            - name: NOTES_AUTH_HEADER
+              value: {{ .Values.notes.authHeader | quote }}
+            - name: NOTES_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ include "tools.secretName" $sel }}, key: token }
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          {{- include "tools.probes" . | nindent 10 }}
+          {{- include "tools.containerSecurity" . | nindent 10 }}
+          resources: {{- toYaml .Values.notes.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-notes
+{{- end }}

@@ -1,0 +1,39 @@
+# Defaults shared by every environment; overrides in values-local.yaml /
+# values-prod.yaml. Both servers run from the same image (different command).
+image:
+  registry: urumi-registry:5000
+  repository: mcp-extra
+  tag: dev
+  pullPolicy: IfNotPresent
+
+fx:
+  enabled: true
+  replicas: 1
+  # Bearer token the gateway must send. Generated if empty (keys: token); the
+  # platform chart copies it into its own namespace.
+  existingSecret: ""
+  # Optional replacement rate table, units per 1 USD:
+  #   rates: { asOf: "2026-10-01", perUsd: { EUR: 0.86, INR: 88.5 } }
+  rates: {}
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+notes:
+  enabled: true
+  # Custom header the gateway must send the key in (not Authorization).
+  authHeader: X-Notes-Key
+  existingSecret: ""           # keys: token
+  persistence:
+    size: 256Mi
+    storageClass: ""
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+networkPolicy:
+  enabled: true
+  # Who may call these servers: only the gateway.
+  mcpClients:
+    namespace: platform
+    podLabels: { app.kubernetes.io/name: gateway }

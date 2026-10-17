@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.ts",
     "typecheck": "tsc -p .",
-    "e2e": "node scripts/e2e.ts"
+    "e2e": "node scripts/e2e.ts",
+    "e2e:upstreams": "node scripts/upstreams-e2e.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

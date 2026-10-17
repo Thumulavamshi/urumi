@@ -1,0 +1,19 @@
+{
+  // Type-check only. Node 24 runs the .ts sources directly (type stripping),
+  // so the code must stick to erasable syntax: no enums, namespaces or
+  // constructor parameter properties.
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src", "scripts"]
+}

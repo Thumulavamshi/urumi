@@ -1,0 +1,26 @@
+{
+  "name": "mcp-extra",
+  "version": "0.1.0",
+  "description": "Two small upstream MCP servers for the gateway demo: fx (bearer auth) and notes (custom header auth)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "fx": "node src/fx.ts",
+    "notes": "node src/notes.ts",
+    "typecheck": "tsc -p .",
+    "smoke": "node scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

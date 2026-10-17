@@ -13,6 +13,7 @@ declare -A CONTEXTS=(
   [store-wordpress]=images/wordpress
   [woo-mcp]=services/woo-mcp
   [gateway]=services/gateway
+  [mcp-extra]=services/mcp-extra
 )
 
 build() {

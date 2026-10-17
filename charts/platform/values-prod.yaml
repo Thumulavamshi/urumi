@@ -4,7 +4,9 @@
 #     --from-literal=encryption-key="$(openssl rand -base64 32)" --from-literal=admin-password=...
 #   kubectl -n platform create secret generic platform-postgres --from-literal=password=...
 #   kubectl -n platform create secret generic platform-upstreams \
-#     --from-literal=woo="$(kubectl -n store get secret store-woo-mcp -o jsonpath='{.data.token}' | base64 -d)"
+#     --from-literal=woo="$(kubectl -n store get secret store-woo-mcp -o jsonpath='{.data.token}' | base64 -d)" \
+#     --from-literal=fx="$(kubectl -n tools get secret tools-fx -o jsonpath='{.data.token}' | base64 -d)" \
+#     --from-literal=notes="$(kubectl -n tools get secret tools-notes -o jsonpath='{.data.token}' | base64 -d)"
 bootstrapAdmin:
   email: admin@shop.example.com   # CHANGE
 
@@ -22,6 +24,21 @@ upstreams:
     credential:
       existingSecret: platform-upstreams
       key: woo
+  - slug: fx
+    name: Currency FX
+    url: http://tools-fx.tools.svc.cluster.local/mcp
+    authType: bearer
+    credential:
+      existingSecret: platform-upstreams
+      key: fx
+  - slug: notes
+    name: Follow-up Notes
+    url: http://tools-notes.tools.svc.cluster.local/mcp
+    authType: header
+    authHeaderName: X-Notes-Key
+    credential:
+      existingSecret: platform-upstreams
+      key: notes
 
 gateway:
   image:

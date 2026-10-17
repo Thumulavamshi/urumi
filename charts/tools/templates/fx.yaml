@@ -1,0 +1,45 @@
+{{- if .Values.fx.enabled }}
+{{- $sel := dict "ctx" . "component" "fx" -}}
+# Inbound credential: the gateway stores an encrypted copy and sends it as
+# `Authorization: Bearer`. Gateway clients never see it.
+{{ include "tools.secret" $sel }}
+{{ include "tools.service" $sel }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tools.fullname" . }}-fx
+  labels: {{- include "tools.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.fx.replicas }}
+  selector:
+    matchLabels: {{- include "tools.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tools.labels" . | nindent 8 }}
+        {{- include "tools.selectorLabels" $sel | nindent 8 }}
+    spec:
+      {{- include "tools.podSecurity" . | nindent 6 }}
+      containers:
+        - name: fx
+          image: {{ include "tools.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [node, src/fx.ts]
+          env:
+            - name: PORT
+              value: "8080"
+            - name: FX_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ include "tools.secretName" $sel }}, key: token }
+            {{- with .Values.fx.rates }}
+            - name: FX_RATES_JSON
+              value: {{ toJson . | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          {{- include "tools.probes" . | nindent 10 }}
+          {{- include "tools.containerSecurity" . | nindent 10 }}
+          resources: {{- toYaml .Values.fx.resources | nindent 12 }}
+{{- end }}

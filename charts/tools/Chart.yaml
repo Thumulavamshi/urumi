@@ -1,0 +1,8 @@
+apiVersion: v2
+name: tools
+description: >-
+  Extra upstream MCP servers for the gateway: fx (currency conversion, bearer
+  auth) and notes (follow-up notes, custom-header auth). ClusterIP only.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

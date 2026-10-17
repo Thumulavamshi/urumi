@@ -101,7 +101,8 @@ check("upstream tool error passed through", upstreamErr.isError === true, text(u
 check("admin disables woo", (await admin.req("PATCH", `/api/servers/${woo.id}`, { enabled: false })).status === 200);
 await sleep(500);
 check("list_changed notification received", listChanged >= 1, listChanged);
-check("disabled server's tools gone", (await client.listTools()).tools.length === 0);
+const afterDisable = (await client.listTools()).tools.map((t) => t.name);
+check("disabled server's tools gone", !afterDisable.some((n) => n.startsWith("woo__")), afterDisable);
 const disabledCall = await client.callTool({ name: "woo__list_products", arguments: {} });
 check("call to disabled server refused", disabledCall.isError === true && text(disabledCall).includes("disabled"), text(disabledCall));
 check("admin re-enables woo", (await admin.req("PATCH", `/api/servers/${woo.id}`, { enabled: true })).status === 200);

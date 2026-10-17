@@ -29,7 +29,8 @@ Definition-of-Done (DoD) demo runs end to end.
 .
 ├── charts/
 │   ├── store/                 # WordPress + MariaDB + setup Job + woo-mcp
-│   ├── platform/              # gateway + dashboard + postgres + extra MCP servers
+│   ├── tools/                 # fx + notes MCP servers (namespace tools)
+│   ├── platform/              # gateway + dashboard + postgres
 │   ├── values-local.yaml      # (per chart: values-local.yaml / values-prod.yaml)
 │   └── values-prod.yaml
 ├── services/
@@ -103,16 +104,18 @@ Own Helm chart `charts/store` (no Bitnami — keeps it explainable and their ima
 
 **Exit:** with `curl`/Inspector + a member key: tools from woo listed with prefixes, calls routed and audited; revoked key → 401; disabled server → tools gone. ✅
 
-## Phase 4 — Two more upstream MCP servers (Day 7)
+## Phase 4 — Two more upstream MCP servers (Day 7) ✅
 
-Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**. Recommendation:
+Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 
-- [ ] `mcp-extra/fx` — currency/utility server (e.g. `convert_currency`, `get_rates`), protected by a **bearer credential** (demos credential storage). Prompt: *"What were today's orders, and what's the total in EUR?"*
-- [ ] `mcp-extra/notes` (or shipping/CRM-style) — e.g. `create_note`, `list_notes`, and deliberately also exposes a tool whose bare name collides with woo (e.g. `list_orders` or `search`) to **demo the collision scheme**. Uses a custom header credential.
-- [ ] Optionally a third **public remote** server (e.g. a no-auth hosted MCP) to show an external URL — only if network in the demo is reliable.
-- [ ] Deployed via the `platform` chart (or own small chart), ClusterIP only, probes/limits.
+- [x] `services/mcp-extra` — one package/image, two servers (chart picks `src/fx.ts` or `src/notes.ts`), shared stateless HTTP shell like woo-mcp.
+- [x] **fx** — `list_currencies`, `get_rates`, `convert_currency` (one amount or a list, summed). **Bearer** credential. Fixed reference rate table (no third-party API in the demo path; overridable via `fx.rates`). Prompt: *"What were today's orders, and what's the total in EUR?"*
+- [x] **notes** — `create_note`, `list_notes`, `delete_note`, and a deliberately colliding `list_orders` (orders that have notes) → `woo__list_orders` vs `notes__list_orders`. **Custom header** credential (`X-Notes-Key`). JSON file on a PVC (atomic write, one replica, `Recreate`).
+- [ ] ~~Optional public remote server~~ — skipped: the demo shouldn't depend on outside network; adding one at runtime from the dashboard shows the same thing.
+- [x] Own small chart `charts/tools` (namespace `tools`): generated token Secrets, ClusterIP only, probes + limits, non-root/read-only rootfs, NetworkPolicy: ingress only from gateway pods, **no egress at all**. Registered in `charts/platform` values as managed upstreams; tokens copied across namespaces like woo's.
+- [x] Verified by `services/gateway/scripts/upstreams-e2e.ts` (22 checks): 3 servers connected, collision listed, woo → fx two-server flow, notes write; fx scaled to 0 → clear "connection refused", API shows unreachable, fx tools hidden, woo + notes keep working, recovers after scale-up, audited. Plus: non-gateway pod blocked, tools pods have no egress, notes survive pod delete. Phase 3 e2e still 32/32.
 
-**Exit:** 3 servers connected; kill one pod → others keep working, dashboard/API shows it unreachable.
+**Exit:** 3 servers connected; kill one pod → others keep working, dashboard/API shows it unreachable. ✅
 
 ## Phase 5 — React dashboard (Days 8–9)
 

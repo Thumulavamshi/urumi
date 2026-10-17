@@ -1,0 +1,30 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy -}}
+# Both servers: inbound only from the gateway pods (platform namespace), and no
+# outbound traffic at all — they don't call anything, not even DNS.
+#
+#   gateway (platform ns) ──8080──> fx / notes ──X
+{{- range $component := list "fx" "notes" }}
+{{- if (index $.Values $component).enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "tools.fullname" $ }}-{{ $component }}
+  labels: {{- include "tools.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "tools.selectorLabels" (dict "ctx" $ "component" $component) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.mcpClients.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.mcpClients.podLabels | nindent 14 }}
+      ports:
+        - { port: 8080, protocol: TCP }
+  egress: []
+{{- end }}
+{{- end }}
+{{- end }}

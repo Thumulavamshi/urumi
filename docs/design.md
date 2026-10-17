@@ -252,3 +252,54 @@ refused; re-enable → tools back; audit rows attributed to the member (success,
 error, denied); members see only their own rows; cross-origin cookie write →
 403; revoke key → the open session *and* a new connection are rejected. Also:
 deleting the Postgres and gateway pods loses no users, keys, sessions or audit.
+
+## Layer 4 — Extra upstreams (`services/mcp-extra`, `charts/tools`)
+
+### What runs (namespace `tools`, release `tools`)
+
+| Resource | Purpose |
+|---|---|
+| `tools-fx` Deployment + ClusterIP Service | Currency conversion MCP server, bearer auth |
+| `tools-notes` Deployment + Service + PVC (256Mi) | Follow-up notes MCP server, `X-Notes-Key` header auth |
+| `tools-fx` / `tools-notes` Secrets | Generated inbound tokens (key `token`), stable across upgrades |
+| NetworkPolicies | Ingress only from `app.kubernetes.io/name=gateway` pods in `platform`; egress: none |
+
+### Decisions
+
+**Why these two.** Together with woo they make the demo prompt span two
+servers ("today's orders, total in EUR": `woo__list_orders` →
+`fx__convert_currency`) and exercise both credential types the gateway
+supports (bearer, custom header). `notes` deliberately exposes `list_orders`,
+the same bare name as WooCommerce's, to show why every tool is exposed as
+`<slug>__<tool>`.
+
+**One image, two commands.** Both servers share the stateless HTTP shell
+(`src/http.ts`: `/mcp`, `/healthz`, `/readyz`, constant-time credential check,
+graceful SIGTERM) and differ only in auth and tools. The chart sets
+`command: [node, src/fx.ts]` or `[node, src/notes.ts]`.
+
+**Static FX rates.** A fixed table (as-of date in every response, labelled
+"not live market data"), overridable from values without a rebuild. A live
+rates API would add an outside dependency to the demo and need egress, which
+these pods don't have.
+
+**Notes storage.** A JSON file on a ReadWriteOnce volume, rewritten via
+temp-file + rename so a crash never leaves it truncated. That forces one
+writer: `replicas: 1` and `strategy: Recreate`. Good enough for a demo
+upstream; a real one would use a database.
+
+**Own namespace and chart.** Same isolation story as the store: the gateway is
+the only thing that can reach them. Their tokens are copied into
+`platform-upstreams` at install time (install `tools` before `platform`), and
+the servers are registered as managed upstreams in the platform values.
+
+### Verified (`services/gateway/scripts/upstreams-e2e.ts`, 22 checks)
+
+All three upstreams connected; `woo__list_orders` and `notes__list_orders` both
+listed; the woo → fx flow returns the correct EUR total; notes written through
+the header credential. Scaling fx to 0: the next call fails with "Upstream 'fx'
+is unreachable: connection refused", the API shows fx `unreachable`, its tools
+disappear from `tools/list`, woo and notes keep working, the gateway stays
+ready; after scale-up fx reconnects and the outage shows in the audit log as
+`unreachable`. Separately: a pod without the gateway label is blocked from fx,
+the notes pod can't reach the internet, and notes survive deleting their pod.

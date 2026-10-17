@@ -36,6 +36,24 @@ upstreams:
       # ...or copied at install time from the store release's Secret (Secrets
       # can't be referenced across namespaces). Install the store first.
       copyFrom: { namespace: store, secret: store-woo-mcp, key: token }
+  # charts/tools (install it before this chart, like the store)
+  - slug: fx
+    name: Currency FX
+    url: http://tools-fx.tools.svc.cluster.local/mcp
+    authType: bearer
+    credential:
+      existingSecret: ""
+      key: token
+      copyFrom: { namespace: tools, secret: tools-fx, key: token }
+  - slug: notes
+    name: Follow-up Notes
+    url: http://tools-notes.tools.svc.cluster.local/mcp
+    authType: header
+    authHeaderName: X-Notes-Key
+    credential:
+      existingSecret: ""
+      key: token
+      copyFrom: { namespace: tools, secret: tools-notes, key: token }
 
 gateway:
   image:
