@@ -129,17 +129,21 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 - [ ] **Chat** page → Phase 6.
 - [x] Verified in a real browser (`services/dashboard/scripts/ui-e2e.mjs`, headless Edge via playwright-core, 32 checks): both roles end to end, light + dark, phone width. Found and fixed two bugs: a 401 re-fetch loop for logged-out visitors, and a failed login wiping the form.
 
-## Phase 6 — Chat agent (Days 9–10)
+## Phase 6 — Chat agent (Days 9–10) ✅
 
-- [ ] Backend `POST /api/chat` (streamed via SSE): LLM tool loop
-  1. fetch tool list **through the gateway as the logged-in user** (same aggregation + filtering)
-  2. send tools + history to LLM → if tool calls: execute **through the gateway's MCP routing path under that user's identity** → append results → repeat (max N steps)
-  3. stream final answer + tool-call trace
-- [ ] Cleanest "acts as the user" story: the chat module is an MCP client to the gateway's own `/mcp` using a short-lived, internal, user-bound token — so it's literally the same path as external clients, and audit attribution is automatic.
-- [ ] UI: messages, collapsible "called `woo__list_orders` (args → result, 230 ms)" chips.
-- [ ] LLM provider: **Groq** (chosen 2026-10-19: good tool-calling models, generous free tier) via its OpenAI-compatible API; key from a Secret, model selectable via Helm values.
+- [x] Backend `POST /api/chat` (Server-Sent Events, cookie session): LLM tool loop
+  1. tool list = `upstreams.aggregatedTools()` — exactly what that user's MCP clients get from `tools/list`
+  2. LLM asks for tools → each runs through `router.call(user, name, args, "chat")` — the same function `/mcp`'s `tools/call` handler calls: same disabled/unreachable checks, same timeout, same audit row (with `via=chat`) → results go back to the LLM → repeat (max 8 steps)
+  3. streams `tool_call` / `tool_result` / `status` / `message` / `done` events
+- [x] "Acts as the user": decided **in-process** instead of an MCP client to the gateway's own `/mcp` with an internal token — the `/mcp` handlers are one-line calls into the same two functions, so the path is identical without minting/storing internal tokens or a loopback HTTP hop. The principal is the logged-in session user.
+- [x] Free-tier realities (Groq, 8k tokens/min): compact tool schemas, tool results capped at 4,000 chars, last 12 turns only, automatic wait-and-retry on 429 (shown as "retrying in Ns…"), one retry on a malformed tool call, one running reply per user (429), client disconnect aborts the loop.
+- [x] UI: Chat page with streamed tool chips ("✓ called `woo__list_orders` · 246 ms", expandable args → result), safe Markdown rendering (React elements, no innerHTML), suggestions, Stop, New chat, transcript in sessionStorage.
+- [x] LLM: **Groq** (chosen 2026-10-19: good tool-calling models, generous free tier), OpenAI-compatible API; key from Secret `platform-llm` (created by hand, never in values; `optional` so the gateway starts without it and chat says "not configured"); base URL / model / limits in Helm values. Default model `openai/gpt-oss-120b` (also tested: `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`).
+- [x] `scripts/place-order.mjs`: places a COD order through the public Store API (what the checkout page does).
+- [x] Verified by `services/dashboard/scripts/chat-e2e.mjs` (17 checks, real browser + real LLM) — the DoD below; plus: same user twice at once → 429; fx disabled → the model says the tool isn't available instead of inventing a rate; burst → rate-limit retries then correct answers.
+- [x] Found and fixed: an upstream closing the connection mid-call ("Connection closed", pod stopping) was audited as `error`, not `unreachable`.
 
-**Exit (DoD "Chat as user A"):** create product via chat → on storefront; place order by hand → "what orders came in today?" returns it; all calls in audit under user A.
+**Exit (DoD "Chat as user A"):** create product via chat → on storefront; place order by hand → "what orders came in today?" returns it; all calls in audit under user A. ✅
 
 ## Phase 7 — Kubernetes hardening + production values (Days 10–11)
 

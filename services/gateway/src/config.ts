@@ -42,6 +42,21 @@ export interface Config {
   healthTimeoutMs: number;
   bootstrapAdmin?: { email: string; name: string; password: string };
   bootstrapServers: BootstrapServer[];
+  /** Chat agent; undefined when no LLM API key is configured (chat disabled). */
+  chat?: ChatConfig;
+}
+
+export interface ChatConfig {
+  /** OpenAI-compatible API base, e.g. https://api.groq.com/openai/v1 */
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  /** Max LLM round-trips (tool steps) per user message. */
+  maxSteps: number;
+  /** Per LLM request. */
+  timeoutMs: number;
+  /** Tool results are cut to this many characters before going back to the LLM. */
+  maxToolResultChars: number;
 }
 
 export function loadConfig(): Config {
@@ -67,5 +82,15 @@ export function loadConfig(): Config {
         ? { email: adminEmail.toLowerCase(), name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Admin", password: adminPassword }
         : undefined,
     bootstrapServers: JSON.parse(process.env.BOOTSTRAP_SERVERS ?? "[]") as BootstrapServer[],
+    chat: process.env.LLM_API_KEY
+      ? {
+          baseUrl: (process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
+          apiKey: process.env.LLM_API_KEY,
+          model: process.env.LLM_MODEL ?? "openai/gpt-oss-120b",
+          maxSteps: int("CHAT_MAX_STEPS", 8),
+          timeoutMs: int("LLM_TIMEOUT_MS", 60_000),
+          maxToolResultChars: int("CHAT_MAX_TOOL_RESULT_CHARS", 4000),
+        }
+      : undefined,
   };
 }

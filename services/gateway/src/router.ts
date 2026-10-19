@@ -53,7 +53,7 @@ export class ToolRouter {
           error = `Upstream '${target.server.slug}' timed out after ${this.#timeoutMs / 1000}s`;
         } else {
           const reason = describeError(err, target.server.slug, this.#timeoutMs);
-          const transportFailure = /refused|not found|reset|fetch failed/i.test(reason + errorMessage(err));
+          const transportFailure = /refused|not found|reset|closed|fetch failed/i.test(reason + errorMessage(err));
           outcome = transportFailure ? "unreachable" : "error";
           // Same wording as resolve() uses once the health check has noticed the outage.
           error = transportFailure

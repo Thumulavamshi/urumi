@@ -114,3 +114,55 @@ export interface AuditPage {
   items: AuditEntry[];
   nextBefore: number | null;
 }
+
+// ---- Chat (POST /api/chat answers with Server-Sent Events) ----------------------
+
+export interface ChatConfig {
+  enabled: boolean;
+  model: string | null;
+}
+
+export type ChatEvent =
+  | { type: "tool_call"; id: string; name: string; args: unknown }
+  | { type: "tool_result"; id: string; name: string; ok: boolean; durationMs: number; preview: string }
+  | { type: "status"; message: string }
+  | { type: "message"; content: string }
+  | { type: "error"; message: string }
+  | { type: "done"; steps: number; tokens: number; model: string };
+
+/**
+ * POST the transcript and call onEvent for each streamed event. (EventSource
+ * can't POST a body, so this reads the SSE stream from fetch directly.)
+ */
+export async function streamChat(
+  messages: { role: "user" | "assistant"; content: string }[],
+  onEvent: (e: ChatEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ messages }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const frame = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as ChatEvent);
+      }
+    }
+  }
+}

@@ -377,6 +377,8 @@ export function describeError(err: unknown, slug: string, timeoutMs: number): st
   if (/ECONNREFUSED/.test(msg)) return "connection refused";
   if (/ENOTFOUND|EAI_AGAIN/.test(msg)) return "host not found";
   if (/ECONNRESET|socket hang up|UND_ERR_SOCKET/.test(msg)) return "connection reset";
+  // The upstream went away mid-request (e.g. its pod was stopping): the SDK reports the closed stream.
+  if (/connection closed|other side closed/i.test(msg)) return "connection closed by upstream";
   const status = err instanceof SdkHttpError ? err.status : undefined;
   if (status === 401) return "upstream rejected the credential (HTTP 401)";
   if (status === 403) return "upstream refused access (HTTP 403)";

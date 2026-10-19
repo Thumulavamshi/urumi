@@ -359,3 +359,74 @@ that member; disabling fx flips the badge and refuses the member's call;
 re-enable reconnects; revoke the member's key → `/mcp` 401; disable the member
 → their open dashboard drops to login; used invite link rejected; no
 horizontal scroll at phone width; logout; no console errors.
+
+## Layer 6 — Chat agent (`services/gateway/src/api/chat.ts`, `llm.ts`; dashboard `Chat` page)
+
+### Request flow
+
+```
+browser ──POST /api/chat {messages}──> gateway (session cookie → principal = user A)
+   ▲                                     │ tools = upstreams.aggregatedTools()
+   │ SSE: tool_call / tool_result /      │ loop ≤ 8:
+   │      status / message / done        │   Groq chat/completions (messages + tools)
+   └─────────────────────────────────────│   tool_calls? → router.call(A, name, args, "chat")
+                                         │                  → upstream MCP server
+                                         │                  → audit_log row (user A, via=chat)
+                                         │   else → final answer
+```
+
+### Decisions
+
+**"Acts as the user" in-process.** The plan considered making the chat an MCP
+client of the gateway's own `/mcp` with a short-lived internal token. The
+`/mcp` handlers are one-liners: `tools/list` → `aggregatedTools()`,
+`tools/call` → `router.call(principal, …)`. Calling those same two functions
+with the session user as principal gives the identical path (same tool list,
+same disabled/unreachable/unknown-tool checks, same timeout, same audit row) without
+minting internal tokens or making an HTTP hop to ourselves. Audit rows carry
+`via=chat` so the log shows how the call was made.
+
+**Provider: Groq, OpenAI-compatible, plain fetch.** One endpoint and a few
+typed fields; switching provider is a base URL + model + key change in values.
+The key lives only in the `platform-llm` Secret (created by hand), mounted with
+`optional: true`: without it the gateway still starts and chat reports "not
+configured".
+
+**Stateless server, transcript in the browser.** Each message sends the
+recent transcript (user messages + final answers, last 12 turns); the gateway
+keeps no chat state, so any replica can answer and nothing sensitive persists
+server-side beyond the audit log.
+
+**Built for a free tier (8k tokens/minute).** Tool schemas lose `$schema`;
+tool results are cut to 4,000 characters before going back to the model; on
+HTTP 429 the loop waits for the provider's reset time (≤30 s, up to 3 times)
+and tells the user ("retrying in 11s…"); a malformed tool call
+(`tool_use_failed`) is retried once; one running reply per user.
+
+**Streaming.** SSE over a POST (`fetch` + stream reader; `EventSource` can't
+POST). Events are per step, not per token: the interesting part to watch is
+which tool ran, with what, and how long it took. Keepalive comments every 15 s;
+if the browser goes away the loop and any in-flight tool call are aborted.
+
+**Prompt guardrails.** The system prompt names the user, says calls are
+audited under them, explains the `<server>__<tool>` prefixes and tells the
+model to use tools rather than guess and to report failures plainly. It's not a
+security boundary: what the chat can do is bounded by the tools that user can
+reach, exactly like their own MCP client.
+
+**Rendering.** Answers are Markdown (tables are common); a small renderer
+builds React elements, never `innerHTML`, and links are http(s) only, so model
+or tool output can't inject markup.
+
+### Verified (`services/dashboard/scripts/chat-e2e.mjs`, real browser + real LLM)
+
+Fresh member A, in the dashboard: "Create a product … priced 14.99" →
+`woo__create_product` → the product is in the public Store API and its page
+loads with the right price. An order placed through the shop
+(`scripts/place-order.mjs`) → "What orders came in today?" answers with that
+order number. In a new chat, "What were today's orders, and what's the total in
+EUR?" → `woo__list_orders` + `fx__convert_currency` with the correct total.
+Every row in the audit log is user A, `via=chat`, success; A's own audit page
+shows them. Also checked by hand: same user twice at once → 429; fx disabled
+→ the model says the tool isn't available; a burst → rate-limit retries then
+correct answers.

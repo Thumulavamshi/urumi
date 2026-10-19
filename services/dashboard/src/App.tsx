@@ -7,6 +7,7 @@ import { ServersPage } from "./pages/Servers.tsx";
 import { KeysPage } from "./pages/Keys.tsx";
 import { AuditPage } from "./pages/Audit.tsx";
 import { TeamPage } from "./pages/Team.tsx";
+import { ChatPage } from "./pages/Chat.tsx";
 
 interface NavItem {
   to: string;
@@ -17,6 +18,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: "/", label: "Servers", page: (me) => <ServersPage me={me} /> },
+  { to: "/chat", label: "Chat", page: (me) => <ChatPage me={me} /> },
   { to: "/keys", label: "My API keys", page: () => <KeysPage /> },
   { to: "/audit", label: "Audit log", page: (me) => <AuditPage me={me} /> },
   { to: "/team", label: "Team", adminOnly: true, page: (me) => <TeamPage me={me} /> },

@@ -83,6 +83,22 @@ spec:
             - name: BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef: { name: {{ include "platform.gatewaySecret" . }}, key: admin-password }
+            - name: LLM_BASE_URL
+              value: {{ .Values.chat.baseUrl | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.chat.model | quote }}
+            - name: CHAT_MAX_STEPS
+              value: {{ .Values.chat.maxSteps | quote }}
+            - name: LLM_TIMEOUT_MS
+              value: {{ .Values.chat.timeoutMs | quote }}
+            - name: CHAT_MAX_TOOL_RESULT_CHARS
+              value: {{ .Values.chat.maxToolResultChars | quote }}
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.chat.apiKeySecret.name }}
+                  key: {{ .Values.chat.apiKeySecret.key }}
+                  optional: true   # no Secret -> chat disabled, gateway still starts
             - name: BOOTSTRAP_SERVERS
               value: {{ toJson $bootstrap | quote }}
             {{- range .Values.upstreams }}

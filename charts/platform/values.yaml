@@ -72,6 +72,21 @@ gateway:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 384Mi }
 
+# Chat agent (dashboard Chat page). Any OpenAI-compatible chat-completions API
+# with tool calling; Groq by default (free tier: ~8k tokens/minute). The API key
+# is never in values: create the Secret yourself, e.g.
+#   kubectl -n platform create secret generic platform-llm --from-literal=groq-api-key=gsk_...
+# Without it the gateway still runs; chat just reports "not configured".
+chat:
+  baseUrl: https://api.groq.com/openai/v1
+  model: openai/gpt-oss-120b     # also works: openai/gpt-oss-20b, qwen/qwen3.8-27b
+  apiKeySecret:
+    name: platform-llm
+    key: groq-api-key
+  maxSteps: 8                    # LLM round-trips per user message
+  timeoutMs: 60000
+  maxToolResultChars: 4000       # tool output sent back to the LLM is cut here
+
 dashboard:
   image:
     registry: urumi-registry:5000

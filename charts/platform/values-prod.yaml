@@ -7,6 +7,7 @@
 #     --from-literal=woo="$(kubectl -n store get secret store-woo-mcp -o jsonpath='{.data.token}' | base64 -d)" \
 #     --from-literal=fx="$(kubectl -n tools get secret tools-fx -o jsonpath='{.data.token}' | base64 -d)" \
 #     --from-literal=notes="$(kubectl -n tools get secret tools-notes -o jsonpath='{.data.token}' | base64 -d)"
+#   kubectl -n platform create secret generic platform-llm --from-literal=groq-api-key=gsk_...
 bootstrapAdmin:
   email: admin@shop.example.com   # CHANGE
 

@@ -2,12 +2,14 @@
 //
 //   /mcp        aggregated MCP endpoint (API key)            -> mcp.ts
 //   /api/...    dashboard + admin REST API (session cookie)  -> api/*
+//   /api/chat   chat agent acting as the logged-in user       -> api/chat.ts
 //   /healthz    liveness: the process is serving
 //   /readyz     readiness: Postgres reachable. NOT upstream health — one dead
 //               upstream must never take the gateway out of the Service.
 import express, { type NextFunction, type Request, type Response } from "express";
 import { authRoutes } from "./api/auth.ts";
 import { auditRoutes } from "./api/audit.ts";
+import { ChatAgent, chatRoutes } from "./api/chat.ts";
 import { keyRoutes } from "./api/keys.ts";
 import { serverRoutes } from "./api/servers.ts";
 import { userRoutes } from "./api/users.ts";
@@ -36,6 +38,8 @@ const mcp = new McpEndpoint(db, upstreams, router);
 await upstreams.start();
 
 const deps: Deps = { db, cfg, box, upstreams, mcp };
+const chat = cfg.chat ? new ChatAgent(cfg.chat, deps, router) : undefined;
+log({ msg: chat ? "chat enabled" : "chat disabled (no LLM_API_KEY)", model: chat?.model });
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1); // behind the ingress controller
@@ -62,6 +66,7 @@ api.use(keyRoutes(deps));
 api.use(serverRoutes(deps));
 api.use(userRoutes(deps));
 api.use(auditRoutes(deps));
+api.use(chatRoutes(chat));
 app.use("/api", api);
 
 app.use((_req, res) => {
