@@ -14,6 +14,7 @@ declare -A CONTEXTS=(
   [woo-mcp]=services/woo-mcp
   [gateway]=services/gateway
   [mcp-extra]=services/mcp-extra
+  [dashboard]=services/dashboard
 )
 
 build() {

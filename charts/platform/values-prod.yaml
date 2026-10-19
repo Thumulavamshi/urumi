@@ -46,6 +46,12 @@ gateway:
     tag: "0.1.0"
     pullPolicy: IfNotPresent
 
+dashboard:
+  image:
+    registry: ghcr.io/CHANGE-ME
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
 postgres:
   persistence:
     size: 5Gi

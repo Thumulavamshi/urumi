@@ -6,5 +6,9 @@ gateway:
   image:
     pullPolicy: Always         # :dev is rebuilt in place
 
+dashboard:
+  image:
+    pullPolicy: Always
+
 ingress:
   host: app.127.0.0.1.nip.io

@@ -1,4 +1,4 @@
-Gateway: {{ include "platform.publicUrl" . }}
+Dashboard: {{ include "platform.publicUrl" . }}
   REST API:     {{ include "platform.publicUrl" . }}/api
   MCP endpoint: {{ include "platform.publicUrl" . }}/mcp   (Authorization: Bearer <personal API key>)
 

@@ -19,7 +19,7 @@ Definition-of-Done (DoD) demo runs end to end.
 | Tool collisions | Always namespace: `<serverSlug>__<toolName>` (e.g. `woo__list_orders`) | Deterministic, never changes when a new server is added; the model sees which server a tool belongs to. |
 | API keys | Random 32-byte token, prefix `mcpg_`, store **SHA-256 hash** + short display prefix; shown once | Fast lookup per request, revocable, never recoverable from DB. |
 | Upstream creds | Encrypted at rest (AES-256-GCM, key from a K8s Secret); only decrypted inside gateway | Never sent to browser/MCP client (API returns `hasCredential: true` only). |
-| LLM for chat | Provider-agnostic adapter; default to a free/cheap tier (Gemini / Groq / Claude Haiku) | Brief grades the tool loop, not answer quality. Key lives in a K8s Secret. |
+| LLM for chat | **Groq** (OpenAI-compatible chat completions with tool calling), model in Helm values | Brief grades the tool loop, not answer quality. Key lives in a K8s Secret. |
 
 ---
 
@@ -117,16 +117,17 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 
 **Exit:** 3 servers connected; kill one pod → others keep working, dashboard/API shows it unreachable. ✅
 
-## Phase 5 — React dashboard (Days 8–9)
+## Phase 5 — React dashboard (Days 8–9) ✅
 
-`services/dashboard` (Vite + React + TanStack Query + a light UI kit), served by nginx; Ingress `app.127.0.0.1.nip.io` with `/api` and `/mcp` routed to the gateway (same origin → simple cookies, no CORS).
+`services/dashboard` (Vite + React 19 + TanStack Query, hand-written CSS — no UI kit, ~86 KB gzipped), built into unprivileged nginx (uid 101, read-only rootfs, `/tmp` emptyDir, CSP + no-framing headers, SPA fallback). Ingress `app.127.0.0.1.nip.io`: `/api` + `/mcp` → gateway, `/` → dashboard (same origin → plain session cookie, no CORS). NetworkPolicy: dashboard ← Traefik only, no egress.
 
-- [ ] Login / accept-invite pages.
-- [ ] **Servers** (admin edit, member read-only): status badges Connected / Unreachable (with reason) / Disabled, expandable tool list, add/edit (URL, auth type, credential — write-only field), enable/disable, delete, "test connection".
-- [ ] **Team** (admin): invite member, list users + keys, revoke key, change role.
-- [ ] **My API keys**: generate (show once + copy), revoke, plus a ready-to-paste Claude Code / Cursor config snippet (`claude mcp add --transport http gateway https://app…/mcp --header "Authorization: Bearer …"`).
-- [ ] **Audit log**: table (user, server, tool, time, duration, outcome), filters, auto-refresh.
-- [ ] **Chat** page (Phase 6).
+- [x] Login / accept-invite pages (invite also serves as password reset).
+- [x] **Servers** (admin edit, member read-only): status badges Connected / Unreachable (with reason) / Disabled / Connecting, polled every 5 s; expandable tool list showing the exposed `<slug>__<tool>` names; add/edit (URL, auth type, header name, credential — write-only), test connection before saving, enable/disable, delete; managed (Helm) servers lock URL/credential.
+- [x] **Team** (admin): invite member (one-time link shown once), list users + their keys, revoke any key, change role, disable/enable, new invite / reset link.
+- [x] **My API keys**: generate (shown once + copy), revoke, ready-to-paste Claude Code command and Cursor `mcp.json`.
+- [x] **Audit log**: table (time, user, server, tool, via, duration, outcome, error), filters (user, server, tool, outcome, via, time range), auto-refresh, "load older" keyset paging.
+- [ ] **Chat** page → Phase 6.
+- [x] Verified in a real browser (`services/dashboard/scripts/ui-e2e.mjs`, headless Edge via playwright-core, 32 checks): both roles end to end, light + dark, phone width. Found and fixed two bugs: a 401 re-fetch loop for logged-out visitors, and a failed login wiping the form.
 
 ## Phase 6 — Chat agent (Days 9–10)
 
@@ -136,7 +137,7 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
   3. stream final answer + tool-call trace
 - [ ] Cleanest "acts as the user" story: the chat module is an MCP client to the gateway's own `/mcp` using a short-lived, internal, user-bound token — so it's literally the same path as external clients, and audit attribution is automatic.
 - [ ] UI: messages, collapsible "called `woo__list_orders` (args → result, 230 ms)" chips.
-- [ ] LLM provider + key from Secret; provider/model selectable via Helm values.
+- [ ] LLM provider: **Groq** (chosen 2026-10-19: good tool-calling models, generous free tier) via its OpenAI-compatible API; key from a Secret, model selectable via Helm values.
 
 **Exit (DoD "Chat as user A"):** create product via chat → on storefront; place order by hand → "what orders came in today?" returns it; all calls in audit under user A.
 

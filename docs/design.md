@@ -303,3 +303,59 @@ disappear from `tools/list`, woo and notes keep working, the gateway stays
 ready; after scale-up fx reconnects and the outage shows in the audit log as
 `unreachable`. Separately: a pod without the gateway label is blocked from fx,
 the notes pod can't reach the internet, and notes survive deleting their pod.
+
+## Layer 5 — Dashboard (`services/dashboard`)
+
+### What runs
+
+| Resource | Purpose |
+|---|---|
+| `platform-dashboard` Deployment + Service | nginx-unprivileged serving the built SPA on 8080 |
+| Ingress path `/` | Everything that isn't `/api` or `/mcp` (longest prefix wins) |
+| NetworkPolicy `platform-dashboard` | Ingress only from Traefik; no egress |
+
+### Decisions
+
+**Same origin for UI, API and MCP.** One host, path-routed by the Ingress.
+The browser authenticates with the gateway's httpOnly `SameSite=Lax` session
+cookie: no tokens in JavaScript or localStorage, no CORS. The gateway's
+Origin check plus JSON-only content type covers CSRF for cookie-authed writes.
+
+**The dashboard pod holds nothing.** Static files only: no secrets, no server
+code, no outbound traffic. Every permission check lives in the gateway; the UI
+only hides what a role can't use (members get no Team page or server edit
+buttons, and the API returns 403 if they try anyway).
+
+**Small dependency surface.** React + TanStack Query (caching, polling,
+invalidation after mutations) and a 30-line router (`router.tsx`) for five
+flat routes; plain CSS with light/dark tokens instead of a component kit.
+
+**Live-ish status without websockets.** Servers poll every 5 s and the audit
+log every 5 s (toggleable). That's enough for "kill a pod → badge goes red with
+the reason" in the demo, and costs one cheap in-memory read on the gateway.
+
+**Secrets shown exactly once.** New API keys and invite links appear in a
+dialog right after creation (with copy buttons and ready-to-paste Claude Code /
+Cursor config) and can never be retrieved again; the gateway stores only
+hashes. Upstream credentials are write-only form fields.
+
+**Session end handling.** While logged in, any 401 (session expired, user
+disabled, logged out elsewhere) re-checks `/api/auth/me` and drops the app to
+the login page. Logout does a full reload so no cached data survives.
+
+**nginx hardening.** Non-root, read-only root filesystem (writable `/tmp`
+emptyDir), the image's entrypoint scripts skipped, CSP `default-src 'self'`,
+`frame-ancestors 'none'`, nosniff; hashed assets cached for a year,
+`index.html` never cached (so a deploy is picked up on the next load).
+
+### Verified (`scripts/ui-e2e.mjs`, headless Edge, 32 checks)
+
+Admin: wrong password → error; 3 of 3 servers connected with tools; test
+connection; add-server form shows "host not found" for a bad URL; managed
+server's URL locked; invite link. Member (dark mode): accepts invite, lands on
+keys, creates a key (shown once with snippets), uses it from an MCP client,
+sees only their own audit rows, no admin controls. Admin: audit filtered to
+that member; disabling fx flips the badge and refuses the member's call;
+re-enable reconnects; revoke the member's key → `/mcp` 401; disable the member
+→ their open dashboard drops to login; used invite link rejected; no
+horizontal scroll at phone width; logout; no console errors.

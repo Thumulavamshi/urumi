@@ -1,0 +1,62 @@
+{{- $fullname := include "platform.fullname" . -}}
+{{- $sel := dict "ctx" . "component" "dashboard" -}}
+# The React dashboard: static files from nginx. It holds no secrets and talks
+# to nothing; the browser calls /api on the same host.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "platform.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels: {{- include "platform.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+        {{- include "platform.selectorLabels" $sel | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: dashboard
+          image: {{ with .Values.dashboard.image }}{{ if .registry }}{{ .registry }}/{{ end }}{{ .repository }}:{{ .tag }}{{ end }}
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }   # nginx pid + temp files
+          resources: {{- toYaml .Values.dashboard.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }

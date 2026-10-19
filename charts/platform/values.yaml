@@ -72,6 +72,17 @@ gateway:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 384Mi }
 
+dashboard:
+  image:
+    registry: urumi-registry:5000
+    repository: dashboard
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicas: 1                  # static files: stateless, scale freely
+  resources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { cpu: 200m, memory: 64Mi }
+
 postgres:
   image: postgres:18-alpine
   database: gateway
