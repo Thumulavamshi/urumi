@@ -4,6 +4,7 @@ import type { Config } from "../config.ts";
 import type { CredentialBox } from "../crypto.ts";
 import type { Db } from "../db.ts";
 import type { McpEndpoint } from "../mcp.ts";
+import type { SsrfGuard } from "../ssrf.ts";
 import type { UpstreamManager } from "../upstreams.ts";
 
 export interface Deps {
@@ -12,6 +13,7 @@ export interface Deps {
   box: CredentialBox;
   upstreams: UpstreamManager;
   mcp: McpEndpoint;
+  guard: SsrfGuard;
 }
 
 /** Validate input with zod; a failure becomes a 400 listing what was wrong. */

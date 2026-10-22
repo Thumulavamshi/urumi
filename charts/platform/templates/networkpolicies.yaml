@@ -1,12 +1,28 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- $fullname := include "platform.fullname" . -}}
 {{- $np := .Values.networkPolicy -}}
-# Inbound rules for the platform namespace:
+# Default deny for the whole namespace (in and out), then one allow-list per
+# component:
 #
 #   ingress controller ──8080──> gateway ──5432──> postgres
+#   ingress controller ──8080──> dashboard
+#   gateway ──8080──> MCP server pods in the upstream namespaces (store, tools)
+#   gateway ──443──> public internet (LLM API, external MCP servers)
+#   gateway ──53──> kube-dns
 #
-# (Egress from the gateway — to upstream MCP servers, DNS and later the LLM
-# API — is locked down in the hardening phase.)
+# The gateway's egress is the network half of the SSRF defence: even if a URL
+# got past the application check (src/ssrf.ts), the packets can only go to the
+# upstream namespaces or to public addresses — never to the Kubernetes API,
+# the node, the metadata service or other namespaces.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-default-deny
+  labels: {{- include "platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,13 +31,14 @@ metadata:
 spec:
   podSelector:
     matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "postgres") | nindent 6 }}
-  policyTypes: [Ingress]
+  policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - podSelector:
             matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 14 }}
       ports:
         - { port: 5432, protocol: TCP }
+  egress: []
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -31,7 +48,7 @@ metadata:
 spec:
   podSelector:
     matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 6 }}
-  policyTypes: [Ingress]
+  policyTypes: [Ingress, Egress]
   ingress:
     - from:
         - namespaceSelector:
@@ -40,6 +57,46 @@ spec:
             matchLabels: {{- toYaml $np.ingressController.podLabels | nindent 14 }}
       ports:
         - { port: {{ .Values.gateway.port }}, protocol: TCP }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {{- include "platform.selectorLabels" (dict "ctx" . "component" "postgres") | nindent 14 }}
+      ports:
+        - { port: 5432, protocol: TCP }
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.dns.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.dns.podLabels | nindent 14 }}
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    {{- with $np.gatewayEgress }}
+    {{- if .upstreamNamespaces }}
+    # In-cluster MCP servers. Their own policies further limit who they accept.
+    - to:
+        {{- range .upstreamNamespaces }}
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ . }} }
+        {{- end }}
+      ports:
+        {{- range .upstreamPorts }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    {{- end }}
+    {{- if .internet.enabled }}
+    # Public addresses only: the private ranges (pods, Services, nodes) and
+    # link-local/metadata are carved out.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{- toYaml .internet.exceptCidrs | nindent 14 }}
+      ports:
+        {{- range .internet.ports }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    {{- end }}
+    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

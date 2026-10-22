@@ -1,10 +1,14 @@
-# Production-like VPS running k3s. Tokens are generated on first install and
-# kept across upgrades; or create them yourself and set existingSecret, e.g.
+# Production-like VPS running k3s. Same chart; only these values differ.
+# Create the token Secrets before installing (docs/deploy-vps.md), e.g.
 #   kubectl -n tools create secret generic tools-fx --from-literal=token="$(openssl rand -hex 24)"
 image:
   registry: ghcr.io/CHANGE-ME
   tag: "0.1.0"
 
+fx:
+  existingSecret: tools-fx
+
 notes:
+  existingSecret: tools-notes
   persistence:
     storageClass: local-path

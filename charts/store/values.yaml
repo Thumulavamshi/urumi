@@ -97,10 +97,24 @@ networkPolicy:
   ingressController:
     namespace: kube-system
     podLabels: { app.kubernetes.io/name: traefik }
+    # The controller's container ports for HTTP/HTTPS (k3s Traefik: 8000/8443),
+    # for WordPress's requests to its own public URL.
+    containerPorts: [8000, 8443]
   # Who may call the MCP server: only the gateway.
   mcpClients:
     namespace: platform
     podLabels: { app.kubernetes.io/name: gateway }
+  # Cluster DNS (CoreDNS in k3s), the only thing every pod may call.
+  dns:
+    namespace: kube-system
+    podLabels: { k8s-app: kube-dns }
+  # WordPress outbound HTTP(S) to public addresses (WP-Cron loopback via the
+  # public URL in production, payment/shipping APIs). Private ranges excluded,
+  # so this never opens a path to other pods or the node network.
+  wordpressInternet:
+    enabled: true
+    ports: [80, 443]
+    exceptCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
 
 ingress:
   enabled: true

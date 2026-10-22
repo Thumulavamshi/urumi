@@ -86,3 +86,15 @@ wp-config-docker.php reads all of these, so wp-config.php is never stored.
     define('DISALLOW_FILE_MODS', true);
     define('AUTOMATIC_UPDATER_DISABLED', true);
 {{- end -}}
+
+{{/* NetworkPolicy egress rule: DNS lookups via the cluster DNS pods. */}}
+{{- define "store.dnsEgress" -}}
+- to:
+    - namespaceSelector:
+        matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace }} }
+      podSelector:
+        matchLabels: {{- toYaml .Values.networkPolicy.dns.podLabels | nindent 10 }}
+  ports:
+    - { port: 53, protocol: UDP }
+    - { port: 53, protocol: TCP }
+{{- end -}}

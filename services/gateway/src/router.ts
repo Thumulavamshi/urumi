@@ -53,10 +53,13 @@ export class ToolRouter {
           error = `Upstream '${target.server.slug}' timed out after ${this.#timeoutMs / 1000}s`;
         } else {
           const reason = describeError(err, target.server.slug, this.#timeoutMs);
-          const transportFailure = /refused|not found|reset|closed|fetch failed/i.test(reason + errorMessage(err));
-          outcome = transportFailure ? "unreachable" : "error";
+          const blocked = reason.startsWith("URL blocked");
+          const transportFailure = !blocked && /refused|not found|reset|closed|fetch failed/i.test(reason + errorMessage(err));
+          outcome = blocked ? "denied" : transportFailure ? "unreachable" : "error";
           // Same wording as resolve() uses once the health check has noticed the outage.
-          error = transportFailure
+          error = blocked
+            ? `Upstream '${target.server.slug}' is blocked by the gateway's SSRF policy: ${reason}`
+            : transportFailure
             ? `Upstream '${target.server.slug}' is unreachable: ${reason}`
             : `Upstream '${target.server.slug}' failed: ${reason}`;
           if (transportFailure) this.#upstreams.recheckSoon(target.server.id);

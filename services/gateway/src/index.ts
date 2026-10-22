@@ -22,6 +22,7 @@ import { createPool, migrate, waitForDb } from "./db.ts";
 import { errorMessage, log } from "./log.ts";
 import { McpEndpoint } from "./mcp.ts";
 import { ToolRouter } from "./router.ts";
+import { SsrfGuard } from "./ssrf.ts";
 import { UpstreamManager, VERSION } from "./upstreams.ts";
 
 const cfg = loadConfig();
@@ -32,12 +33,14 @@ await waitForDb(db);
 await migrate(db);
 await bootstrap(db, cfg, box);
 
-const upstreams = new UpstreamManager(db, box, { intervalMs: cfg.healthIntervalMs, timeoutMs: cfg.healthTimeoutMs });
+const guard = new SsrfGuard(cfg.upstreamAllowedHosts);
+log({ msg: "upstream SSRF allowlist", hosts: guard.allowedHosts });
+const upstreams = new UpstreamManager(db, box, guard, { intervalMs: cfg.healthIntervalMs, timeoutMs: cfg.healthTimeoutMs });
 const router = new ToolRouter(db, upstreams, { callTimeoutMs: cfg.callTimeoutMs });
 const mcp = new McpEndpoint(db, upstreams, router);
 await upstreams.start();
 
-const deps: Deps = { db, cfg, box, upstreams, mcp };
+const deps: Deps = { db, cfg, box, upstreams, mcp, guard };
 const chat = cfg.chat ? new ChatAgent(cfg.chat, deps, router) : undefined;
 log({ msg: chat ? "chat enabled" : "chat disabled (no LLM_API_KEY)", model: chat?.model });
 const app = express();
@@ -93,7 +96,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
     log({ msg: `received ${signal}, shutting down` });
     server.close();
-    void Promise.allSettled([mcp.close(), upstreams.stop()]).then(() => db.end()).then(() => process.exit(0));
+    void Promise.allSettled([mcp.close(), upstreams.stop()]).then(() => guard.close()).then(() => db.end()).then(() => process.exit(0));
     setTimeout(() => process.exit(0), 10_000).unref();
   });
 }

@@ -5,6 +5,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { HttpError, requireAdmin } from "../auth.ts";
 import { log } from "../log.ts";
+import { SsrfError } from "../ssrf.ts";
 import type { ServerRow } from "../upstreams.ts";
 import { idParam, parse, type Deps } from "./util.ts";
 
@@ -62,8 +63,19 @@ const Test = z.object({
   serverId: z.number().int().positive().optional(),
 });
 
-export function serverRoutes({ db, box, upstreams }: Deps): Router {
+export function serverRoutes({ db, box, upstreams, guard }: Deps): Router {
   const r = Router();
+
+  // Refuse internal/metadata URLs up front with a clear 400. The same check runs
+  // again on every connection (DNS can change), see src/ssrf.ts.
+  async function checkUrl(url: string): Promise<void> {
+    try {
+      await guard.check(url);
+    } catch (err) {
+      if (err instanceof SsrfError) throw new HttpError(400, err.message);
+      throw err;
+    }
+  }
 
   async function load(id: number): Promise<ServerRow> {
     const { rows } = await db.query<ServerRow>("SELECT * FROM servers WHERE id = $1", [id]);
@@ -82,6 +94,7 @@ export function serverRoutes({ db, box, upstreams }: Deps): Router {
 
   r.post("/servers", requireAdmin, async (req, res) => {
     const s = parse(Create, req.body);
+    await checkUrl(s.url);
     const enc = s.authType !== "none" && s.credential ? box.encrypt(s.credential, s.slug) : null;
     const { rows } = await db
       .query<{ id: number }>(
@@ -109,6 +122,7 @@ export function serverRoutes({ db, box, upstreams }: Deps): Router {
     if (row.managed && touchesConnection) {
       throw new HttpError(400, "this server is managed by Helm values; change its URL/credential there");
     }
+    if (patch.url !== undefined) await checkUrl(patch.url);
 
     const next = {
       name: patch.name ?? row.name,
@@ -151,6 +165,7 @@ export function serverRoutes({ db, box, upstreams }: Deps): Router {
   // Test settings without saving them (dashboard form), or a saved server as-is.
   r.post("/servers/test", requireAdmin, async (req, res) => {
     const t = parse(Test, req.body);
+    await checkUrl(t.url);
     let cred = t.credential ?? null;
     if (!cred && t.serverId && t.authType !== "none") {
       const row = await load(t.serverId);

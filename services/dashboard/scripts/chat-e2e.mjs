@@ -108,7 +108,8 @@ check(`answer mentions order #${orderId}`, !!orderId && today.answer.includes(or
 //    reuses the order totals it already has and only needs fx).
 await page.getByRole("button", { name: "New chat" }).click();
 const eur = await ask("What were today's orders, and what's the total in EUR?");
-check("two servers in one prompt (woo + fx)", eur.tools.some((t) => t.startsWith("woo__")) && eur.tools.includes("fx__convert_currency"), eur.tools);
+// The model may convert directly or fetch the rate and multiply; either is fine.
+check("two servers in one prompt (woo + fx)", eur.tools.some((t) => t.startsWith("woo__")) && eur.tools.some((t) => t.startsWith("fx__")), eur.tools);
 check("answer has a EUR amount", /€|EUR/.test(eur.answer), eur.answer);
 if (SHOTS) await page.screenshot({ path: `${SHOTS}/chat-2-orders.png`, fullPage: true });
 
@@ -119,8 +120,8 @@ const audit = await adminApi("GET", `/audit?userId=${userA.id}&limit=100`);
 const rows = audit.items;
 check("audit rows are attributed to user A", rows.length >= 4 && rows.every((r) => r.userEmail === email), rows.length);
 check("all of A's calls are via=chat", rows.every((r) => r.via === "chat"), rows.map((r) => r.via));
-for (const tool of ["woo__create_product", "woo__list_orders", "fx__convert_currency"]) {
-  check(`audit has ${tool} (success)`, rows.some((r) => r.tool === tool && r.outcome === "success"));
+for (const tool of ["woo__create_product", "woo__list_orders", "fx__"]) {
+  check(`audit has ${tool}* (success)`, rows.some((r) => r.tool.startsWith(tool) && r.outcome === "success"));
 }
 await page.getByRole("link", { name: "Audit log", exact: true }).click();
 await page.getByText("woo__create_product").first().waitFor({ timeout: 10_000 }).catch(() => {});

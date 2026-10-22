@@ -57,6 +57,23 @@ const woo = servers.find((s) => s.slug === "woo");
 check("woo server registered + connected", woo?.status === "connected", woo);
 check("credential never returned", !JSON.stringify(servers).includes("credential_enc") && woo?.hasCredential === true);
 
+// ---- SSRF guard: admins can't point a server at internal/metadata addresses
+for (const url of [
+  "http://169.254.169.254/latest/meta-data/",
+  "http://localhost:8080/mcp",
+  "http://kubernetes.default.svc.cluster.local/",
+  "http://platform-postgres.platform.svc.cluster.local:5432/",
+]) {
+  const tested = await admin.req("POST", "/api/servers/test", { url });
+  check(`SSRF: test ${url} -> 400`, tested.status === 400 && /URL blocked/.test(tested.data?.error), tested.data);
+}
+const ssrfCreate = await admin.req("POST", "/api/servers", { slug: "meta", name: "Metadata", url: "http://169.254.169.254/" });
+check("SSRF: can't save a metadata URL", ssrfCreate.status === 400, ssrfCreate.data);
+const probe = await admin.req("POST", "/api/servers", { slug: `ssrf-${Date.now() % 1e6}`, name: "SSRF probe", url: "https://example.com/mcp", enabled: false });
+const ssrfPatch = await admin.req("PATCH", `/api/servers/${probe.data?.id}`, { url: "http://127.0.0.1/mcp" });
+check("SSRF: can't change a URL to loopback", ssrfPatch.status === 400 && /URL blocked/.test(ssrfPatch.data?.error), ssrfPatch.data);
+await admin.req("DELETE", `/api/servers/${probe.data?.id}`);
+
 // ---- Admin invites member B; B accepts and creates a key
 const email = `member-${Date.now()}@example.com`;
 const invite = await admin.req("POST", "/api/users", { email, name: "Member B", role: "member" });

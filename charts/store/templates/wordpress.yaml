@@ -50,8 +50,20 @@ spec:
     spec:
       # Avoid Kubernetes injecting WORDPRESS_* service env vars into the pod.
       enableServiceLinks: false
+      automountServiceAccountToken: false   # never talks to the Kubernetes API
+      # Apache runs entirely as www-data (the official image supports this), so
+      # nothing in the pod is root. Port 80 is opened via the namespaced
+      # "unprivileged ports" sysctl instead of the NET_BIND_SERVICE capability.
+      # The root filesystem stays writable: the image's entrypoint copies
+      # WordPress into /var/www/html on start (code still comes only from the image).
       securityContext:
-        fsGroup: 33            # www-data, so Apache can write uploads
+        runAsNonRoot: true
+        runAsUser: 33          # www-data
+        runAsGroup: 33
+        fsGroup: 33            # so Apache can write uploads
+        seccompProfile: { type: RuntimeDefault }
+        sysctls:
+          - { name: net.ipv4.ip_unprivileged_port_start, value: "0" }
       containers:
         - name: wordpress
           image: {{ include "store.image" . }}
@@ -75,6 +87,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 10
             failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           resources: {{- toYaml .Values.wordpress.resources | nindent 12 }}
           volumeMounts:
             - name: uploads

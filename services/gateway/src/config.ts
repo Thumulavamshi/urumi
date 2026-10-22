@@ -42,6 +42,8 @@ export interface Config {
   healthTimeoutMs: number;
   bootstrapAdmin?: { email: string; name: string; password: string };
   bootstrapServers: BootstrapServer[];
+  /** Host names ("*.suffix" allowed) that upstream URLs may use to reach private (in-cluster) addresses. */
+  upstreamAllowedHosts: string[];
   /** Chat agent; undefined when no LLM API key is configured (chat disabled). */
   chat?: ChatConfig;
 }
@@ -82,6 +84,7 @@ export function loadConfig(): Config {
         ? { email: adminEmail.toLowerCase(), name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Admin", password: adminPassword }
         : undefined,
     bootstrapServers: JSON.parse(process.env.BOOTSTRAP_SERVERS ?? "[]") as BootstrapServer[],
+    upstreamAllowedHosts: (process.env.UPSTREAM_ALLOWED_HOSTS ?? "").split(","),
     chat: process.env.LLM_API_KEY
       ? {
           baseUrl: (process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),

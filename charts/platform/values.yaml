@@ -68,6 +68,12 @@ gateway:
   healthTimeoutMs: 5000
   sessionTtlHours: 168
   inviteTtlHours: 72
+  # SSRF guard (services/gateway/src/ssrf.ts): upstream URLs may only reach a
+  # private (in-cluster) address through these host names. Loopback,
+  # link-local and metadata addresses are refused regardless.
+  upstreamAllowedHosts:
+    - "*.store.svc.cluster.local"
+    - "*.tools.svc.cluster.local"
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 384Mi }
@@ -114,6 +120,20 @@ networkPolicy:
   ingressController:
     namespace: kube-system
     podLabels: { app.kubernetes.io/name: traefik }
+  dns:
+    namespace: kube-system
+    podLabels: { k8s-app: kube-dns }
+  # Where the gateway may send traffic (besides Postgres and DNS).
+  gatewayEgress:
+    # Namespaces holding in-cluster MCP servers, and their container ports.
+    # Keep in step with gateway.upstreamAllowedHosts.
+    upstreamNamespaces: [store, tools]
+    upstreamPorts: [8080]
+    # LLM API and external (internet) MCP servers: public addresses only.
+    internet:
+      enabled: true
+      ports: [443]
+      exceptCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
 
 ingress:
   enabled: true

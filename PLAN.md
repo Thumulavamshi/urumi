@@ -145,15 +145,15 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 
 **Exit (DoD "Chat as user A"):** create product via chat → on storefront; place order by hand → "what orders came in today?" returns it; all calls in audit under user A. ✅
 
-## Phase 7 — Kubernetes hardening + production values (Days 10–11)
+## Phase 7 — Kubernetes hardening + production values (Days 10–11) ✅ (VPS deploy pending a server)
 
-- [ ] Every workload: readiness + liveness (+ startup for WordPress), requests/limits — audit with a script.
-- [ ] NetworkPolicies: default-deny in both namespaces, then explicit allows (ingress-controller → wordpress/dashboard/gateway; gateway → woo-mcp, extras, postgres; egress DNS + LLM API).
-- [ ] Containers non-root, read-only root FS where possible, `securityContext` drop ALL caps.
-- [ ] SSRF guard on server URLs (block metadata IPs, link-local; allowlist for cluster-internal service URLs since our upstreams live there — document the tradeoff).
-- [ ] `values-prod.yaml`: real hostnames, `ingressClassName`, TLS via cert-manager (optional), storage class/size, image registry/tags, secrets via `existingSecret` (created out-of-band, not in values), resource sizes.
-- [ ] Deploy to a VPS with k3s (Hetzner/Oracle free tier) using the **same charts** — document the diff.
-- [ ] Upgrade/rollback demo: `helm upgrade` with new image tag → `helm rollback`.
+- [x] Every workload: readiness + liveness (+ startup where slow), requests/limits — `scripts/audit-workloads.mjs` checks the live cluster (17 failures before → 0).
+- [x] NetworkPolicies: default-deny in all three namespaces, then explicit allows (Traefik → wordpress/dashboard/gateway; gateway → postgres, MCP namespaces :8080, DNS, public :443 for the LLM). Probed from inside each pod.
+- [x] Non-root everywhere (WordPress as www-data via the unprivileged-port sysctl, MariaDB as mysql), drop ALL caps, no privilege escalation, seccomp RuntimeDefault, no SA tokens, read-only root FS except WordPress/setup.
+- [x] SSRF guard on server URLs (`services/gateway/src/ssrf.ts`): metadata/loopback/link-local always blocked, private ranges only via host allowlist (`*.store|tools.svc.cluster.local`), checked at save time and on every connection (DNS rebinding), redirects refused; NetworkPolicy as second layer. Tradeoff in docs/design.md.
+- [x] `values-prod.yaml`: hostnames, TLS via cert-manager (`infra/letsencrypt-issuer.yaml`), storage class/size, GHCR images with immutable tags, every Secret via `existingSecret`.
+- [ ] Deploy to a VPS with k3s using the **same charts** — runbook + local→prod diff in `docs/deploy-vps.md`; needs a server.
+- [x] Upgrade/rollback demo: `scripts/upgrade-rollback-demo.sh` (good tag → broken tag fails while old pod serves → rollback; 0 failed health probes).
 
 ## Phase 8 — Docs, rehearsal, demo video (Days 12–13)
 

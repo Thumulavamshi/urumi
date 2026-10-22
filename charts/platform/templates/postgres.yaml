@@ -66,12 +66,18 @@ spec:
             failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
           volumeMounts:
             # postgres 18 images keep PGDATA under /var/lib/postgresql/<major>/docker
             - name: data
               mountPath: /var/lib/postgresql
+            - { name: run, mountPath: /var/run/postgresql }   # unix socket + lock file
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
   volumeClaimTemplates:
     - metadata:
         name: data

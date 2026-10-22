@@ -425,8 +425,126 @@ Fresh member A, in the dashboard: "Create a product … priced 14.99" →
 loads with the right price. An order placed through the shop
 (`scripts/place-order.mjs`) → "What orders came in today?" answers with that
 order number. In a new chat, "What were today's orders, and what's the total in
-EUR?" → `woo__list_orders` + `fx__convert_currency` with the correct total.
+EUR?" → `woo__list_orders` + an `fx__*` tool with the correct total.
 Every row in the audit log is user A, `via=chat`, success; A's own audit page
 shows them. Also checked by hand: same user twice at once → 429; fx disabled
 → the model says the tool isn't available; a burst → rate-limit retries then
 correct answers.
+
+## Layer 7 — Hardening (all three charts, `services/gateway/src/ssrf.ts`)
+
+### Network: default deny, then named paths only
+
+Each namespace has a `default-deny` NetworkPolicy (all pods, in and out), and
+every component gets an explicit allow-list on top. Pods may only use the
+paths below.
+
+| From | To | Why |
+|---|---|---|
+| Traefik | wordpress:80, gateway:8080, dashboard:8080 | the public front doors |
+| gateway | postgres:5432 | its database |
+| gateway | pods in `store`, `tools` on :8080 | in-cluster MCP servers (they further restrict to the gateway) |
+| gateway | public IPs :443 | LLM API, internet MCP servers (private ranges carved out) |
+| woo-mcp | wordpress:80 | WooCommerce REST API |
+| wordpress, setup Job | mariadb:3306 | database |
+| wordpress | Traefik :8000/8443, public IPs :80/443 | its own public URL (WP-Cron loopback), payment/shipping APIs |
+| everyone above | kube-dns:53 | name resolution |
+| mariadb, postgres, dashboard, fx, notes | nothing | they never call out |
+
+Probed from inside the pods (k3s's kube-router rejects with ECONNREFUSED).
+- **Gateway:** reaches Postgres, woo-mcp, fx and `api.groq.com`. It cannot
+  reach the Kubernetes API, WordPress, MariaDB, 169.254.169.254, the dashboard
+  or arbitrary :80.
+- **woo-mcp:** reaches only WordPress.
+- **fx:** reaches nothing, not even DNS.
+- **WordPress:** reaches MariaDB and public :443, but not woo-mcp, the
+  gateway, Postgres or the Kubernetes API.
+
+The WordPress→Traefik rule came from a test. Run from a pod, a request to the
+node IP is forwarded (DNAT) to the Traefik pod before the policy is checked.
+So with only "public IPs" allowed, a store on a VPS couldn't call its own URL,
+and WP-Cron would break silently. Allowing exactly the Traefik pods' container
+ports fixes it without opening anything else on the node.
+
+### SSRF: two independent layers
+
+Admins type upstream URLs, and the gateway then sends requests to them carrying
+stored credentials.
+
+**Application layer (`src/ssrf.ts`)** checks every address a host resolves to:
+- **Always refused:** loopback, link-local (including metadata at
+  169.254.169.254 and `fd00:ec2::254`), unspecified, multicast and reserved.
+  This holds even for allowlisted hosts.
+- **Private ranges** (RFC 1918, CGNAT, IPv6 ULA) are refused unless the host
+  name is on `gateway.upstreamAllowedHosts`. The default allowlist is
+  `*.store.svc.cluster.local` and `*.tools.svc.cluster.local`.
+- **IPv4-mapped IPv6** is normalised first, so `::ffff:127.0.0.1` can't slip
+  past the IPv4 rules.
+
+The check runs in two places:
+- **Before saving:** on create, update and "Test connection", the API returns a
+  clear 400.
+- **On every connection:** the MCP transport's `fetch` uses an undici `Agent`
+  whose `connect.lookup` applies the same rules. This protects the address
+  actually dialled, so a name that resolves to a public IP when saved and
+  127.0.0.1 later (DNS rebinding, e.g. `127.0.0.1.nip.io`) is still caught.
+
+Redirects are refused, so an upstream can't bounce the gateway somewhere
+internal. A blocked tool call is audited as `denied`.
+
+**The tradeoff.** Our own upstreams live in the cluster, so private addresses
+can't be refused outright. The allowlist names the namespaces that hold MCP
+servers, never `*.svc.cluster.local`, which would include the Kubernetes API
+and Postgres. A new in-cluster server namespace needs an entry in
+`upstreamAllowedHosts` and in `networkPolicy.gatewayEgress.upstreamNamespaces`.
+
+**Network layer.** The gateway's egress policy (above) is the backstop. For
+example, `store-wordpress.store.svc.cluster.local` passes the application check
+because its namespace is allowlisted, but the connection is still refused,
+because the policy only lets the gateway reach port 8080 in that namespace.
+
+### Pods
+
+All workloads meet these rules:
+- non-root, enforced with `runAsNonRoot`;
+- `allowPrivilegeEscalation: false` and `capabilities: drop [ALL]`;
+- seccomp `RuntimeDefault`;
+- no service-account token;
+- requests and limits on every container;
+- readiness and liveness probes on everything except the Job, plus startup
+  probes where startup is slow.
+
+Changes to the store's images in this phase:
+- **WordPress** now runs Apache entirely as `www-data`. Port 80 is opened with
+  the namespaced `net.ipv4.ip_unprivileged_port_start=0` sysctl instead of a
+  capability.
+- **MariaDB** starts as `mysql`, instead of root followed by gosu.
+
+Read-only root filesystems:
+- **Read-only:** gateway, MCP servers, dashboard, Postgres and MariaDB. Their
+  writable paths are `emptyDir` volumes for sockets and `/tmp`.
+- **Still writable:** WordPress and its setup Job. The official image's
+  entrypoint copies the WordPress code into `/var/www/html` at start; the code
+  still comes only from the image, because `DISALLOW_FILE_MODS` is set.
+
+`scripts/audit-workloads.mjs` checks all of this against the live cluster,
+reading what is actually running rather than the templates. It also checks:
+- each namespace has a default-deny policy;
+- there are no NodePort or LoadBalancer Services;
+- Ingresses only point at the three public services.
+
+It exits 1 on any failure. Before this phase it reported 17 failures; now it
+reports none.
+
+### Upgrades and rollback
+
+The gateway and the dashboard roll with `maxSurge: 1, maxUnavailable: 0`: the
+new pod must be Ready before the old one stops.
+`scripts/upgrade-rollback-demo.sh` runs three steps:
+1. Upgrades to an immutable image tag (the commit).
+2. Upgrades to a tag that doesn't exist. `helm upgrade --wait` fails, and the
+   old pod keeps serving.
+3. Runs `helm rollback` to the good revision, then back to the start.
+
+A probe hits `/healthz` every 0.5 s throughout. Measured result: 111 probes,
+0 failures.

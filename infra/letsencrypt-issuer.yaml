@@ -1,0 +1,17 @@
+# cert-manager ClusterIssuer for the VPS (docs/deploy-vps.md). The Ingresses in
+# values-prod.yaml reference it with `cert-manager.io/cluster-issuer: letsencrypt-prod`.
+# HTTP-01 challenges are answered through Traefik, so ports 80/443 must be open.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: you@example.com            # CHANGE: expiry notices go here
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

@@ -7,6 +7,7 @@ export function errorMessage(err: unknown): string {
   if (err instanceof Error) {
     // fetch() hides the useful part (ECONNREFUSED, ENOTFOUND…) in `cause`.
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    if (cause?.code === "ESSRF") return cause.message!; // the SSRF guard's reason is the whole story
     if (cause?.code) return `${err.message} (${cause.code})`;
     return err.message;
   }

@@ -22,10 +22,12 @@ spec:
     spec:
       restartPolicy: Never
       enableServiceLinks: false
+      automountServiceAccountToken: false   # never talks to the Kubernetes API
       securityContext:
         runAsUser: 33          # www-data: wp-cli refuses to run as root
         runAsGroup: 33
         runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: setup
           image: {{ include "store.image" . }}
@@ -60,4 +62,7 @@ spec:
                 secretKeyRef: { name: {{ include "store.wcApiSecret" . }}, key: consumer-secret }
             - name: SEED_PRODUCTS
               value: {{ .Values.store.seedProducts | toJson | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           resources: {{- toYaml .Values.setup.resources | nindent 12 }}

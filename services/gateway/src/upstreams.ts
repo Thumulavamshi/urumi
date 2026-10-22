@@ -21,6 +21,7 @@ import {
 import type { Db } from "./db.ts";
 import type { CredentialBox } from "./crypto.ts";
 import { errorMessage, log } from "./log.ts";
+import type { SsrfGuard } from "./ssrf.ts";
 
 export const VERSION = "0.1.0";
 export const TOOL_SEPARATOR = "__";
@@ -85,16 +86,18 @@ export interface ConnectionSpec {
 export class UpstreamManager extends EventEmitter {
   #db: Db;
   #box: CredentialBox;
+  #guard: SsrfGuard;
   #intervalMs: number;
   #timeoutMs: number;
   #upstreams = new Map<number, Upstream>();
   #timer?: NodeJS.Timeout;
   #toolsSignature = "";
 
-  constructor(db: Db, box: CredentialBox, opts: { intervalMs: number; timeoutMs: number }) {
+  constructor(db: Db, box: CredentialBox, guard: SsrfGuard, opts: { intervalMs: number; timeoutMs: number }) {
     super();
     this.#db = db;
     this.#box = box;
+    this.#guard = guard;
     this.#intervalMs = opts.intervalMs;
     this.#timeoutMs = opts.timeoutMs;
   }
@@ -224,8 +227,11 @@ export class UpstreamManager extends EventEmitter {
       headers[spec.authHeaderName] = spec.credential;
     }
     const client = new Client({ name: "urumi-gateway", version: VERSION });
+    // guard.fetch checks every address actually connected to (src/ssrf.ts);
+    // redirects are refused so a server can't bounce us somewhere internal.
     const transport = new StreamableHTTPClientTransport(new URL(spec.url), {
       requestInit: { headers, redirect: "error" },
+      fetch: this.#guard.fetch,
     });
     try {
       await withTimeout(client.connect(transport), timeoutMs, `connect timed out after ${timeoutMs / 1000}s`);
@@ -374,6 +380,8 @@ export function isTimeout(err: unknown): boolean {
 export function describeError(err: unknown, slug: string, timeoutMs: number): string {
   if (isTimeout(err)) return `timed out after ${timeoutMs / 1000}s`;
   const msg = errorMessage(err);
+  const blocked = /URL blocked: .*/.exec(msg);
+  if (blocked) return blocked[0];
   if (/ECONNREFUSED/.test(msg)) return "connection refused";
   if (/ENOTFOUND|EAI_AGAIN/.test(msg)) return "host not found";
   if (/ECONNRESET|socket hang up|UND_ERR_SOCKET/.test(msg)) return "connection reset";

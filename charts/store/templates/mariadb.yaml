@@ -32,8 +32,16 @@ spec:
         {{- include "store.selectorLabels" $sel | nindent 8 }}
     spec:
       enableServiceLinks: false
+      automountServiceAccountToken: false   # never talks to the Kubernetes API
+      # Runs as the image's mysql user from the start (no root entrypoint +
+      # gosu), read-only root filesystem; only the data volume, the socket
+      # dir and /tmp are writable.
       securityContext:
-        fsGroup: 999           # mysql group in the official image
+        runAsNonRoot: true
+        runAsUser: 999         # mysql in the official image
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: mariadb
           image: {{ .Values.mariadb.image }}
@@ -72,10 +80,19 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           resources: {{- toYaml .Values.mariadb.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+            - { name: run, mountPath: /run/mysqld }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
   volumeClaimTemplates:
     - metadata:
         name: data
