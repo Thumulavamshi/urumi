@@ -44,3 +44,8 @@ charts/*/Chart.lock
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- SSH keys (the VPS key was generated in the repo root) ---
+urumi
+urumi.pub
+id_*
