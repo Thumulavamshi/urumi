@@ -548,3 +548,43 @@ new pod must be Ready before the old one stops.
 
 A probe hits `/healthz` every 0.5 s throughout. Measured result: 111 probes,
 0 failures.
+
+## Layer 8 — Tool permissions and confirmations (`services/gateway/src/policy.ts`)
+
+Admins can use every tool. Members can't use the tools listed in
+`toolPolicy.memberDeniedTools` (Helm values; exposed names, `*` wildcard). The
+default list is `woo__update_order_status` (refunds and cancellations) and
+`notes__delete_note`, so a member can't wipe teammates' notes. Members keep
+read access and can still create products and notes, which the
+chat-as-member test needs. To match the assignment's stricter example, add
+`woo__create_product` to the list.
+
+The policy is one check, used on every path:
+- **MCP clients:** `tools/list` leaves the denied tools out of the member's list.
+- **Chat:** the agent's tool list leaves them out too, so the model never sees
+  them.
+- **Direct calls:** `ToolRouter.call` rejects a call made anyway, for example
+  from a stale tool list or a hand-written request. It's audited as `denied`.
+- **Dashboard:** tools are marked "admin only".
+
+Irreversible actions also need confirmation, even for admins. The tool
+description and the chat system prompt both require the model to look the
+order up, say exactly what will change, and wait for a "yes" in a later
+message before setting refunded, cancelled or failed. The tool is annotated
+`destructiveHint: true`, so external clients like Claude Code can treat it with
+care too. This is a model-level guardrail, not a security boundary; the role
+policy is the boundary.
+
+Admins can also issue API keys for a member (`POST /api/users/:id/keys`, the
+Team page's "Issue key" button). The key is shown once, to the admin, and acts
+as that member: their role and their audit trail.
+
+Verified in `scripts/e2e.ts`:
+- The member's list hides the admin-only tools.
+- A direct call is rejected and audited as `denied`.
+- The admin still sees the tools.
+- An issued key works as the member.
+- A member can't issue keys.
+
+Checked by hand against the real model: "refund order 18" makes it look the
+order up and ask "Shall I go ahead?". "yes, go ahead" then performs the refund.

@@ -280,13 +280,15 @@ export function registerTools(server: McpServer, woo: WooClient): void {
     {
       title: "Update order status",
       description:
-        "Change an order's status (e.g. processing -> completed). Optionally adds a private order note explaining the change.",
+        "Change an order's status (e.g. processing -> completed). Optionally adds a private order note explaining the change. " +
+        "refunded, cancelled and failed are final for the customer (WooCommerce records the refund / releases stock): confirm with the user before using them.",
       inputSchema: z.object({
         id: z.number().int().positive().describe("Order id"),
         status: z.enum(ORDER_STATUSES),
         note: z.string().max(1000).optional().describe("Private note added to the order"),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      // destructive: refunded/cancelled can't be meaningfully undone, so clients should ask first.
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ id, status, note }) => {
       try {

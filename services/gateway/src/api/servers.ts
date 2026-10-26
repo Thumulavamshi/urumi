@@ -6,7 +6,7 @@ import { z } from "zod";
 import { HttpError, requireAdmin } from "../auth.ts";
 import { log } from "../log.ts";
 import { SsrfError } from "../ssrf.ts";
-import type { ServerRow } from "../upstreams.ts";
+import type { ServerRow, ServerView } from "../upstreams.ts";
 import { idParam, parse, type Deps } from "./util.ts";
 
 // Headers an upstream credential may not be sent as (they'd break or hijack the transport).
@@ -63,7 +63,7 @@ const Test = z.object({
   serverId: z.number().int().positive().optional(),
 });
 
-export function serverRoutes({ db, box, upstreams, guard }: Deps): Router {
+export function serverRoutes({ db, box, upstreams, guard, policy }: Deps): Router {
   const r = Router();
 
   // Refuse internal/metadata URLs up front with a clear 400. The same check runs
@@ -83,13 +83,17 @@ export function serverRoutes({ db, box, upstreams, guard }: Deps): Router {
     return rows[0];
   }
 
+  // Tools are marked adminOnly per the role policy (src/policy.ts).
+  const withPolicy = (v: ServerView | undefined) =>
+    v && { ...v, tools: v.tools.map((t) => ({ ...t, adminOnly: policy.adminOnly(t.exposedAs) })) };
+
   r.get("/servers", (_req, res) => {
-    res.json(upstreams.views());
+    res.json(upstreams.views().map(withPolicy));
   });
 
-  // The aggregated tool list exactly as MCP clients see it.
-  r.get("/tools", (_req, res) => {
-    res.json(upstreams.aggregatedTools());
+  // The aggregated tool list exactly as this user's MCP clients see it.
+  r.get("/tools", (req, res) => {
+    res.json(policy.filter(req.principal!, upstreams.aggregatedTools()));
   });
 
   r.post("/servers", requireAdmin, async (req, res) => {
@@ -109,7 +113,7 @@ export function serverRoutes({ db, box, upstreams, guard }: Deps): Router {
     const id = rows[0]!.id;
     log({ msg: "server created", slug: s.slug, by: req.principal!.email });
     await upstreams.refresh(id); // connects + lists tools before we answer
-    res.status(201).json(upstreams.view(id));
+    res.status(201).json(withPolicy(upstreams.view(id)));
   });
 
   r.patch("/servers/:id", requireAdmin, async (req, res) => {
@@ -150,7 +154,7 @@ export function serverRoutes({ db, box, upstreams, guard }: Deps): Router {
     );
     log({ msg: "server updated", slug: row.slug, fields: Object.keys(patch), by: req.principal!.email });
     await upstreams.refresh(id);
-    res.json(upstreams.view(id));
+    res.json(withPolicy(upstreams.view(id)));
   });
 
   r.delete("/servers/:id", requireAdmin, async (req, res) => {

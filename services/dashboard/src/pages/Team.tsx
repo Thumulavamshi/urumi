@@ -1,9 +1,10 @@
 // Team (admin only): invite people, change roles, disable accounts, and see or
-// revoke anyone's API keys. There is no email sending: the admin copies the
+// issue or revoke anyone's API keys. There is no email sending: the admin copies the
 // one-time invite link and passes it on.
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, get, type InviteLink, type Me, type Role, type User } from "../api.ts";
+import { api, get, type InviteLink, type Me, type NewKey, type Role, type User } from "../api.ts";
+import { NewKeyModal } from "./Keys.tsx";
 import { ago, Badge, CodeBox, ErrorText, Modal } from "../ui.tsx";
 
 export function TeamPage({ me }: { me: Me }) {
@@ -25,6 +26,12 @@ export function TeamPage({ me }: { me: Me }) {
     mutationFn: (keyId: number) => api("DELETE", `/keys/${keyId}`),
     onSettled: refresh,
   });
+  const [issued, setIssued] = useState<NewKey | null>(null);
+  const issue = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) => api<NewKey>("POST", `/users/${id}/keys`, { name }),
+    onSuccess: setIssued,
+    onSettled: refresh,
+  });
 
   return (
     <>
@@ -37,7 +44,7 @@ export function TeamPage({ me }: { me: Me }) {
           Invite member
         </button>
       </header>
-      <ErrorText error={users.error ?? update.error ?? reinvite.error ?? revoke.error} />
+      <ErrorText error={users.error ?? update.error ?? reinvite.error ?? revoke.error ?? issue.error} />
 
       <div className="stack">
         {users.data?.map((u) => {
@@ -69,6 +76,18 @@ export function TeamPage({ me }: { me: Me }) {
                     <option value="member">member</option>
                     <option value="admin">admin</option>
                   </select>
+                  {!u.disabledAt && !u.invitePending && (
+                    <button
+                      className="btn btn-small"
+                      disabled={issue.isPending}
+                      onClick={() => {
+                        const name = prompt(`Name for the new key for ${u.email}`, "issued by admin")?.trim();
+                        if (name) issue.mutate({ id: u.id, name });
+                      }}
+                    >
+                      Issue key
+                    </button>
+                  )}
                   {!u.disabledAt && (
                     <button className="btn btn-small" onClick={() => reinvite.mutate(u)} disabled={reinvite.isPending}>
                       {u.invitePending ? "New invite link" : "Password reset link"}
@@ -131,6 +150,7 @@ export function TeamPage({ me }: { me: Me }) {
         })}
       </div>
 
+      {issued && <NewKeyModal k={issued} onClose={() => setIssued(null)} />}
       {inviting && (
         <InviteForm
           onClose={() => setInviting(false)}

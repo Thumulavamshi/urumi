@@ -107,7 +107,7 @@ export function KeysPage() {
   );
 }
 
-function NewKeyModal({ k, onClose }: { k: NewKey; onClose: () => void }) {
+export function NewKeyModal({ k, onClose }: { k: NewKey; onClose: () => void }) {
   const cursor = JSON.stringify(
     { mcpServers: { "urumi-gateway": { url: k.mcpUrl, headers: { Authorization: `Bearer ${k.key}` } } } },
     null,

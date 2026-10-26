@@ -22,6 +22,7 @@ import { createPool, migrate, waitForDb } from "./db.ts";
 import { errorMessage, log } from "./log.ts";
 import { McpEndpoint } from "./mcp.ts";
 import { ToolRouter } from "./router.ts";
+import { ToolPolicy } from "./policy.ts";
 import { SsrfGuard } from "./ssrf.ts";
 import { UpstreamManager, VERSION } from "./upstreams.ts";
 
@@ -36,11 +37,13 @@ await bootstrap(db, cfg, box);
 const guard = new SsrfGuard(cfg.upstreamAllowedHosts);
 log({ msg: "upstream SSRF allowlist", hosts: guard.allowedHosts });
 const upstreams = new UpstreamManager(db, box, guard, { intervalMs: cfg.healthIntervalMs, timeoutMs: cfg.healthTimeoutMs });
-const router = new ToolRouter(db, upstreams, { callTimeoutMs: cfg.callTimeoutMs });
+const policy = new ToolPolicy(cfg.memberDeniedTools);
+log({ msg: "tool policy", memberDenied: cfg.memberDeniedTools });
+const router = new ToolRouter(db, upstreams, policy, { callTimeoutMs: cfg.callTimeoutMs });
 const mcp = new McpEndpoint(db, upstreams, router);
 await upstreams.start();
 
-const deps: Deps = { db, cfg, box, upstreams, mcp, guard };
+const deps: Deps = { db, cfg, box, upstreams, mcp, guard, policy };
 const chat = cfg.chat ? new ChatAgent(cfg.chat, deps, router) : undefined;
 log({ msg: chat ? "chat enabled" : "chat disabled (no LLM_API_KEY)", model: chat?.model });
 const app = express();

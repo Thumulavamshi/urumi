@@ -44,6 +44,7 @@ export interface ServerTool {
   title?: string;
   description?: string;
   readOnly?: boolean;
+  adminOnly?: boolean;
 }
 
 export interface Server {

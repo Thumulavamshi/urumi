@@ -78,6 +78,15 @@ gateway:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 384Mi }
 
+# Tool permissions (services/gateway/src/policy.ts). Admins can use every tool;
+# members can't use these (exposed names, "*" wildcard): hidden from their tool
+# list (MCP clients and chat) and rejected + audited as "denied" if called.
+# Members keep read access and can still create products and notes.
+toolPolicy:
+  memberDeniedTools:
+    - woo__update_order_status   # refunds/cancellations: admins only
+    - notes__delete_note         # a member can't delete teammates' notes
+
 # Chat agent (dashboard Chat page). Any OpenAI-compatible chat-completions API
 # with tool calling; Groq by default (free tier: ~8k tokens/minute). The API key
 # is never in values: create the Secret yourself, e.g.

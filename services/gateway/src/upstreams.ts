@@ -71,7 +71,7 @@ export interface ServerView {
   status: UpstreamStatus;
   lastError: string | null;
   lastCheckedAt: string | null;
-  tools: { name: string; exposedAs: string; title?: string; description?: string; readOnly?: boolean }[];
+  tools: { name: string; exposedAs: string; title?: string; description?: string; readOnly?: boolean; adminOnly?: boolean }[];
 }
 
 /** Connection settings for a server, with the credential in plaintext (only ever in memory). */

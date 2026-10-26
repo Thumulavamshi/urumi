@@ -72,6 +72,8 @@ spec:
               value: {{ .Values.gateway.sessionTtlHours | quote }}
             - name: INVITE_TTL_HOURS
               value: {{ .Values.gateway.inviteTtlHours | quote }}
+            - name: MEMBER_DENIED_TOOLS
+              value: {{ join "," .Values.toolPolicy.memberDeniedTools | quote }}
             - name: UPSTREAM_ALLOWED_HOSTS
               value: {{ join "," .Values.gateway.upstreamAllowedHosts | quote }}
             - name: PG_PASSWORD

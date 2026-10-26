@@ -109,6 +109,22 @@ const products = await client.callTool({ name: "woo__list_products", arguments: 
 check("woo__list_products routed", !products.isError && text(products).includes("products"), text(products));
 const orders = await client.callTool({ name: "woo__list_orders", arguments: { date: "today" } });
 check("woo__list_orders(today) routed", !orders.isError, text(orders));
+// ---- Tool policy: members don't get admin-only tools, even by calling them directly
+check("member: admin-only tool hidden", !tools.includes("woo__update_order_status") && !tools.includes("notes__delete_note"), tools);
+const forbidden = await client.callTool({ name: "woo__update_order_status", arguments: { id: 1, status: "refunded" } });
+check("member: admin-only tool rejected if called", forbidden.isError === true && text(forbidden).includes("admin-only"), text(forbidden));
+const adminTools = ((await admin.req("GET", "/api/tools")).data as any[]).map((t) => t.name);
+check("admin: sees admin-only tools", adminTools.includes("woo__update_order_status"), adminTools.length);
+
+// ---- Admin issues a key for the member; it acts as the member
+const issued = await admin.req("POST", `/api/users/${invite.data.id}/keys`, { name: "issued by admin" });
+check("admin issues a key for a member", issued.status === 201 && issued.data.key?.startsWith("mcpg_"), issued.data);
+const issuedClient = await mcpClient(issued.data.key);
+const viaIssued = await issuedClient.callTool({ name: "fx__list_currencies", arguments: {} });
+check("issued key works", !viaIssued.isError, text(viaIssued));
+await issuedClient.close();
+check("member can't issue keys for others", (await member.req("POST", `/api/users/${invite.data.id}/keys`, { name: "x" })).status === 403);
+
 const bad = await client.callTool({ name: "nope__tool", arguments: {} });
 check("unknown tool -> clear error", bad.isError === true && text(bad).includes("Unknown tool"), text(bad));
 const upstreamErr = await client.callTool({ name: "woo__get_order", arguments: { id: 999999 } });
@@ -131,6 +147,11 @@ const mine = audit.filter((a) => a.userEmail === email);
 check(
   "audit rows attributed to member",
   ["success", "denied", "error"].every((o) => mine.some((a) => a.outcome === o)),
+  mine.map((a) => `${a.tool}:${a.outcome}`),
+);
+check(
+  "denied admin-only call is audited",
+  mine.some((a) => a.tool === "woo__update_order_status" && a.outcome === "denied"),
   mine.map((a) => `${a.tool}:${a.outcome}`),
 );
 const memberAudit = (await member.req("GET", "/api/audit")).data.items as any[];

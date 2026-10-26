@@ -1,7 +1,8 @@
-// Personal API keys. Anyone can manage their own; admins can revoke anyone's.
+// Personal API keys. Anyone can manage their own; admins can also issue keys
+// for members and revoke anyone's.
 import { Router } from "express";
 import { z } from "zod";
-import { HttpError } from "../auth.ts";
+import { HttpError, requireAdmin } from "../auth.ts";
 import { newApiKey } from "../crypto.ts";
 import { log } from "../log.ts";
 import { idParam, parse, type Deps } from "./util.ts";
@@ -20,21 +21,36 @@ export function keyRoutes({ db, mcp, cfg }: Deps): Router {
     res.json(rows);
   });
 
-  r.post("/me/keys", async (req, res) => {
-    const { name } = parse(NewKey, req.body);
+  async function createKey(userId: number, name: string, by: string) {
     const { key, prefix, hash } = newApiKey();
     const { rows } = await db.query(
       `INSERT INTO api_keys (user_id, name, prefix, key_hash) VALUES ($1, $2, $3, $4) RETURNING ${KEY_COLUMNS}`,
-      [req.principal!.id, name, prefix, hash],
+      [userId, name, prefix, hash],
     );
-    log({ msg: "api key created", user: req.principal!.email, prefix });
+    log({ msg: "api key created", userId, by, prefix });
     // The only time the full key is ever returned. We keep just its hash.
-    res.status(201).json({
+    return {
       ...rows[0],
       key,
       mcpUrl: `${cfg.publicUrl}/mcp`,
       claudeCode: `claude mcp add --transport http urumi-gateway ${cfg.publicUrl}/mcp --header "Authorization: Bearer ${key}"`,
-    });
+    };
+  }
+
+  r.post("/me/keys", async (req, res) => {
+    const { name } = parse(NewKey, req.body);
+    res.status(201).json(await createKey(req.principal!.id, name, req.principal!.email));
+  });
+
+  // Admin issues a key on a member's behalf (shown once, to the admin, who hands it over).
+  // The key acts as that member: their role, their audit trail.
+  r.post("/users/:id/keys", requireAdmin, async (req, res) => {
+    const id = idParam(req.params.id);
+    const { name } = parse(NewKey, req.body);
+    const { rows } = await db.query<{ disabled_at: Date | null }>("SELECT disabled_at FROM users WHERE id = $1", [id]);
+    if (!rows[0]) throw new HttpError(404, "user not found");
+    if (rows[0].disabled_at) throw new HttpError(400, "user is disabled");
+    res.status(201).json(await createKey(id, name, req.principal!.email));
   });
 
   // Owner or admin. Revocation is immediate: every MCP request re-checks the key,

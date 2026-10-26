@@ -44,6 +44,8 @@ export interface Config {
   bootstrapServers: BootstrapServer[];
   /** Host names ("*.suffix" allowed) that upstream URLs may use to reach private (in-cluster) addresses. */
   upstreamAllowedHosts: string[];
+  /** Exposed tool names ("*" wildcard) that members may not use; admins may use everything. */
+  memberDeniedTools: string[];
   /** Chat agent; undefined when no LLM API key is configured (chat disabled). */
   chat?: ChatConfig;
 }
@@ -85,6 +87,7 @@ export function loadConfig(): Config {
         : undefined,
     bootstrapServers: JSON.parse(process.env.BOOTSTRAP_SERVERS ?? "[]") as BootstrapServer[],
     upstreamAllowedHosts: (process.env.UPSTREAM_ALLOWED_HOSTS ?? "").split(","),
+    memberDeniedTools: (process.env.MEMBER_DENIED_TOOLS ?? "").split(","),
     chat: process.env.LLM_API_KEY
       ? {
           baseUrl: (process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),

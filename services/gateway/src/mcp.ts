@@ -60,7 +60,10 @@ export class McpEndpoint {
       { name: "urumi-mcp-gateway", version: VERSION },
       { capabilities: { tools: { listChanged: true } }, instructions: INSTRUCTIONS },
     );
-    server.setRequestHandler("tools/list", async () => ({ tools: this.#upstreams.aggregatedTools() }));
+    // Each user sees only the tools their role may call (src/policy.ts).
+    server.setRequestHandler("tools/list", async () => ({
+      tools: this.#router.policy.filter(getPrincipal(), this.#upstreams.aggregatedTools()),
+    }));
     server.setRequestHandler("tools/call", async (request, ctx) =>
       this.#router.call(getPrincipal(), request.params.name, request.params.arguments, "mcp", ctx.mcpReq.signal),
     );

@@ -155,7 +155,10 @@ function ServerCard({ server: s, isAdmin, onEdit }: { server: Server; isAdmin: b
                       <code>{t.exposedAs}</code>
                     </td>
                     <td className="muted">{t.description}</td>
-                    <td>{t.readOnly ? <Badge tone="muted">read-only</Badge> : <Badge tone="warn">writes</Badge>}</td>
+                    <td className="nowrap">
+                      {t.readOnly ? <Badge tone="muted">read-only</Badge> : <Badge tone="warn">writes</Badge>}{" "}
+                      {t.adminOnly && <Badge tone="info">admin only</Badge>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

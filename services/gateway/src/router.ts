@@ -4,6 +4,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import type { Principal } from "./auth.ts";
 import type { Db } from "./db.ts";
+import type { ToolPolicy } from "./policy.ts";
 import { errorMessage, log } from "./log.ts";
 import { describeError, isTimeout, type UpstreamManager } from "./upstreams.ts";
 
@@ -14,10 +15,12 @@ export class ToolRouter {
   #db: Db;
   #upstreams: UpstreamManager;
   #timeoutMs: number;
+  readonly policy: ToolPolicy;
 
-  constructor(db: Db, upstreams: UpstreamManager, opts: { callTimeoutMs: number }) {
+  constructor(db: Db, upstreams: UpstreamManager, policy: ToolPolicy, opts: { callTimeoutMs: number }) {
     this.#db = db;
     this.#upstreams = upstreams;
+    this.policy = policy;
     this.#timeoutMs = opts.callTimeoutMs;
   }
 
@@ -34,7 +37,12 @@ export class ToolRouter {
     let error: string | undefined;
     let result: CallToolResult;
 
-    if (!target.ok) {
+    if (!this.policy.allows(principal, exposedName)) {
+      // Hidden from this user's tool list, but called anyway (stale list, hand-written request).
+      outcome = "denied";
+      error = `Tool '${exposedName}' is admin-only; your role (${principal.role}) can't use it`;
+      result = errorResult(error);
+    } else if (!target.ok) {
       outcome = target.outcome;
       error = target.error;
       result = errorResult(target.error);

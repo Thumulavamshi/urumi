@@ -166,7 +166,7 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 
 Ranked by value-per-effort given this architecture:
 
-1. **Tool permissions** (stand-out #2) — per-role allow rules (members read-only on woo writes); filter in `tools/list` + reject in `tools/call`. Cheap because routing is already centralized.
+1. ✅ **Tool permissions** (stand-out #2) — done: `toolPolicy.memberDeniedTools`, chat confirmation for refunds/cancellations, admin can issue keys for members (docs/design.md Layer 8) — per-role allow rules (members read-only on woo writes); filter in `tools/list` + reject in `tools/call`. Cheap because routing is already centralized.
 2. **Observability** (#8) — Prometheus `/metrics` (calls, errors, latency per server) + reason strings already captured.
 3. **Production VPS** (#1) — partly done in Phase 7.
 4. **Handling many tools** (#4) — `search_tools` + `call_tool` meta-tools mode for the chat agent.
