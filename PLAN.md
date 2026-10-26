@@ -145,7 +145,7 @@ Need ≥3 upstreams and a DoD prompt that uses **two servers in one prompt**.
 
 **Exit (DoD "Chat as user A"):** create product via chat → on storefront; place order by hand → "what orders came in today?" returns it; all calls in audit under user A. ✅
 
-## Phase 7 — Kubernetes hardening + production values (Days 10–11) ✅ (VPS deploy pending a server)
+## Phase 7 — Kubernetes hardening + production values (Days 10–11) ✅ (VPS live: https://app.139.59.94.246.nip.io, 2026-10-26)
 
 - [x] Every workload: readiness + liveness (+ startup where slow), requests/limits — `scripts/audit-workloads.mjs` checks the live cluster (17 failures before → 0).
 - [x] NetworkPolicies: default-deny in all three namespaces, then explicit allows (Traefik → wordpress/dashboard/gateway; gateway → postgres, MCP namespaces :8080, DNS, public :443 for the LLM). Probed from inside each pod.

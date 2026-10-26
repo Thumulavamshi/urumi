@@ -82,10 +82,16 @@ kubectl -n store get secret store-wordpress -o jsonpath='{.data.admin-password}'
 
 ## Production-like setup (VPS, k3s)
 
+**Live deployment:** https://shop.139.59.94.246.nip.io (store) and
+https://app.139.59.94.246.nip.io (dashboard, `/mcp`). It runs k3s on a
+DigitalOcean 2 vCPU / 4 GB droplet, with Let's Encrypt TLS through cert-manager
+and only ports 22/80/443 open. The same e2e suites and workload audit pass
+against it.
+
 The same three charts, with `values-prod.yaml`. The full walk-through is in [`docs/deploy-vps.md`](docs/deploy-vps.md):
 1. Install k3s (it bundles Traefik, `local-path` storage and NetworkPolicy enforcement, like k3d locally).
-2. Optionally install cert-manager with the Let's Encrypt issuer in `infra/`.
-3. Push the images to a registry, or import them into k3s's containerd.
+2. Optionally install cert-manager with the Let's Encrypt issuer and the HTTPS redirect in `infra/`.
+3. Push the images to a registry, or stream them into k3s's containerd over SSH (no registry needed).
 4. Create the Secrets by hand (`existingSecret`).
 5. Run `helm upgrade --install store / tools / platform -f values-prod.yaml`.
 6. Verify with `scripts/audit-workloads.mjs` and the e2e suite.

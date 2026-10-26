@@ -23,13 +23,18 @@ guard and the security contexts.
 ## 1. Server
 
 These steps assume Ubuntu 24.04 with at least 2 vCPU, 4 GB RAM and 40 GB disk
-(for example a Hetzner CX22).
+(the reference deploy uses a DigitalOcean 2 vCPU / 4 GB droplet).
 - Open ports 22, 80 and 443 only. The k3s API (6443) stays closed; use it
   through an SSH tunnel.
-- Create DNS A records `shop.<domain>` and `app.<domain>` pointing at the
-  server's IP.
+- **Domain.** Either create DNS A records `shop.<domain>` and `app.<domain>`
+  pointing at the server's IP, or skip DNS entirely and use
+  `shop.<ip>.nip.io` / `app.<ip>.nip.io`, the same approach as local. Let's
+  Encrypt issues certificates for nip.io names.
 
 ```bash
+ufw allow 22/tcp; ufw allow 80/tcp; ufw allow 443/tcp
+ufw allow from 10.42.0.0/16; ufw allow from 10.43.0.0/16   # pod and service CIDRs
+ufw default deny incoming; ufw --force enable
 curl -sfL https://get.k3s.io | sh -          # Traefik, local-path, NetworkPolicy controller included
 sudo kubectl get nodes
 # From your machine: copy /etc/rancher/k3s/k3s.yaml, then point it at an SSH tunnel:
@@ -42,8 +47,13 @@ cert-manager (optional; without it, set `ingress.tls.enabled: false`):
 ```bash
 helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true
-kubectl apply -f infra/letsencrypt-issuer.yaml     # set your email first
+kubectl apply -f infra/letsencrypt-issuer.yaml     # set your email first (or delete the line)
+kubectl apply -f infra/traefik-https-redirect.yaml # http:// -> https:// (the session cookie is Secure)
 ```
+
+cert-manager answers the HTTP-01 challenge with a short-lived solver pod in
+the app's namespace. Default-deny would block it, so both charts add a
+NetworkPolicy that lets Traefik reach it on 8089 when `ingress.tls.enabled`.
 
 ## 2. Images
 
@@ -54,6 +64,16 @@ REGISTRY=ghcr.io/<you> TAG=0.1.0 scripts/build-images.sh
 
 Either make the GHCR packages public, or create an `imagePullSecret`.
 Then set `image.registry` and `image.tag` in the three `values-prod.yaml` files.
+
+**Without a registry** (what the reference deploy does): build locally and
+stream the images into k3s's containerd over SSH. With `pullPolicy:
+IfNotPresent`, the kubelet uses them and never pulls.
+
+```bash
+TAG=0.1.0 scripts/build-images.sh                  # tags localhost:5000/<name>:0.1.0
+docker save localhost:5000/{store-wordpress,woo-mcp,gateway,mcp-extra,dashboard}:0.1.0   | gzip -1 | ssh root@<vps-ip> 'gunzip | k3s ctr -n k8s.io images import -'
+# then install with --set image.registry=localhost:5000 (and wooMcp/gateway/dashboard.image.registry)
+```
 
 ## 3. Secrets (never in values or git)
 
@@ -83,6 +103,10 @@ Back up `encryption-key` somewhere safe. Losing it means re-entering every
 upstream credential that admins added through the dashboard.
 
 ## 4. Install (same order as local)
+
+Per-server settings (hostnames, admin email, registry) go in a small override
+file passed after `values-prod.yaml`, e.g. `-f my-vps.yaml` with
+`ingress.host: app.<ip>.nip.io`.
 
 ```bash
 helm upgrade --install store    charts/store    -n store    -f charts/store/values-prod.yaml    --wait --timeout 10m

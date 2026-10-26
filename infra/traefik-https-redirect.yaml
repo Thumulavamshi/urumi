@@ -1,0 +1,19 @@
+# k3s on the VPS: redirect every http:// request to https:// at Traefik.
+# The gateway's session cookie is Secure when TLS is on, so a login over plain
+# HTTP would silently fail. Not used locally (k3d serves plain HTTP).
+# Syntax for the Traefik chart bundled with k3s (v34+).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true

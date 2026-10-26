@@ -145,4 +145,27 @@ spec:
         - { port: 80, protocol: TCP }
     {{- include "store.dnsEgress" . | nindent 4 }}
 {{- end }}
+{{- if .Values.ingress.tls.enabled }}
+---
+# cert-manager's HTTP-01 solver: a short-lived pod in this namespace that
+# answers Let's Encrypt's challenge through Traefik. Default-deny would block it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-acme-solver
+  labels: {{- include "store.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { acme.cert-manager.io/http01-solver: "true" }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ $np.ingressController.namespace }} }
+          podSelector:
+            matchLabels: {{- toYaml $np.ingressController.podLabels | nindent 14 }}
+      ports:
+        - { port: 8089, protocol: TCP }
+  egress: []
+{{- end }}
 {{- end }}
